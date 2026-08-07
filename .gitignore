@@ -1,0 +1,15 @@
+# Gradle & Build
+.gradle/
+**/build/
+build/
+
+# IDE Configuration
+.idea/
+*.iml
+.DS_Store
+
+# Local properties & Logs
+local.properties
+*.log
+.artifacts/
+decompiled_output/

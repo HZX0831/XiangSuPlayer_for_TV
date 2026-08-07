@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <!-- Search Input Bar -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <EditText
+            android:id="@+id/etSearchQuery"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:background="@drawable/selector_card_bg"
+            android:drawableStart="@drawable/ic_search_line"
+            android:drawablePadding="10dp"
+            android:focusable="true"
+            android:hint="输入歌曲 / 歌手 / 专辑名称..."
+            android:imeOptions="actionSearch"
+            android:inputType="text"
+            android:paddingHorizontal="16dp"
+            android:textColor="@color/tv_text_primary"
+            android:textColorHint="@color/tv_text_secondary"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/btnDoSearch"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_marginStart="12dp"
+            android:drawableStart="@drawable/ic_search_line"
+            android:drawablePadding="6dp"
+            android:focusable="true"
+            android:paddingHorizontal="20dp"
+            android:text="搜索"
+            android:textColor="@color/tv_accent_green"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Search History Tags Section -->
+    <LinearLayout
+        android:id="@+id/layoutHistorySection"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="🕒 搜索历史记录"
+                android:textColor="@color/tv_text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btnClearSearchHistory"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:background="?android:attr/selectableItemBackground"
+                android:focusable="true"
+                android:paddingHorizontal="8dp"
+                android:text="清空历史"
+                android:textColor="@color/tv_text_secondary"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/layoutHistoryTags"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
+    </LinearLayout>
+
+    <!-- Default Hot Suggestions Section (Shown when empty query) -->
+    <LinearLayout
+        android:id="@+id/layoutHotSection"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="16dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🔥 大家都在搜"
+            android:textColor="@color/tv_accent_green"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvHotSongs"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="8dp"
+            android:layout_weight="1"
+            android:focusable="true" />
+    </LinearLayout>
+
+    <!-- Search Results RecyclerView (Shown when query typed) -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvSearchResults"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="16dp"
+        android:layout_weight="1"
+        android:focusable="true"
+        android:visibility="gone" />
+</LinearLayout>

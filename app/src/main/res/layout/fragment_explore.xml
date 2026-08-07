@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- Section 1: Recommend Playlists -->
+        <TextView
+            android:id="@+id/tvPlaylistSectionTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:drawableStart="@drawable/ic_library_line"
+            android:drawablePadding="8dp"
+            android:text="私人推荐歌单"
+            android:textColor="@color/tv_text_primary"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvRecommendPlaylists"
+            android:layout_width="match_parent"
+            android:layout_height="145dp"
+            android:layout_marginTop="8dp"
+            android:focusable="true" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="16dp"
+            android:background="#3338bdf8" />
+
+        <!-- Section 2: Daily Recommend Songs Header -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvExploreHeader"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:drawableStart="@drawable/ic_daily_line"
+                    android:drawablePadding="8dp"
+                    android:text="每日推荐歌曲"
+                    android:textColor="@color/tv_text_primary"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvExploreTip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="根据听歌喜好推荐 • 每日更新"
+                    android:textColor="@color/tv_accent_green"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnPlayDailyAll"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:background="@drawable/selector_glass_button"
+                android:drawableStart="@drawable/ic_play_compact"
+                android:drawablePadding="6dp"
+                android:focusable="true"
+                android:paddingHorizontal="16dp"
+                android:text="播放全部日推"
+                android:textColor="@color/tv_accent_green"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btnRefreshExplore"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:layout_marginStart="16dp"
+                android:background="@drawable/selector_glass_button"
+                android:drawableStart="@drawable/ic_refresh_line"
+                android:drawablePadding="6dp"
+                android:focusable="true"
+                android:paddingHorizontal="16dp"
+                android:text="刷新"
+                android:textColor="@color/tv_text_primary"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <!-- Daily Songs Grid -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvExploreGrid"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:focusable="true"
+            android:nestedScrollingEnabled="false" />
+
+        <!-- Grid Page Pagination Controls -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="16dp"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnPrevPage"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:background="@drawable/selector_glass_button"
+                android:drawableStart="@drawable/ic_prev_line"
+                android:drawablePadding="4dp"
+                android:focusable="true"
+                android:paddingHorizontal="16dp"
+                android:text="上一页"
+                android:textColor="@color/tv_text_primary"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvGridPageInfo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="20dp"
+                android:text="第 1 / 1 页 (共 0 首)"
+                android:textColor="@color/tv_text_secondary"
+                android:textSize="15sp" />
+
+            <Button
+                android:id="@+id/btnNextPage"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:background="@drawable/selector_glass_button"
+                android:drawableStart="@drawable/ic_next_compact"
+                android:drawablePadding="4dp"
+                android:focusable="true"
+                android:paddingHorizontal="16dp"
+                android:text="下一页"
+                android:textColor="@color/tv_text_primary"
+                android:textSize="14sp" />
+        </LinearLayout>
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>

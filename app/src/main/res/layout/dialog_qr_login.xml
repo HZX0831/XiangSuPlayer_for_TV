@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:background="@color/tv_card_bg"
+    android:padding="32dp"
+    android:layout_width="400dp"
+    android:layout_height="wrap_content"
+    android:elevation="16dp">
+    <TextView
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:textColor="@color/tv_text_primary"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="网易云 App 扫码登录"/>
+    <TextView
+        android:textSize="14sp"
+        android:textColor="@color/tv_text_secondary"
+        android:id="@+id/tvQrStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="请使用手机网易云 App 扫描二维码授权"/>
+    <ImageView
+        android:id="@+id/ivQrCode"
+        android:background="@color/white"
+        android:padding="8dp"
+        android:layout_width="220dp"
+        android:layout_height="220dp"
+        android:layout_marginTop="20dp"/>
+    <Button
+        android:textColor="@color/tv_accent_green"
+        android:id="@+id/btnRefreshQr"
+        android:focusable="true"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:text="�� 刷新二维码"/>
+</LinearLayout>

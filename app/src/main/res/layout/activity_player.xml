@@ -1,0 +1,317 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/tv_bg_dark">
+
+    <!-- Bing Wallpaper Background Image -->
+    <ImageView
+        android:id="@+id/ivBingWallpaper"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop" />
+
+    <!-- Dark Tint Overlay for Wallpaper Visibility & Readability -->
+    <View
+        android:id="@+id/wallpaperOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#0F172A" />
+
+    <!-- Gaussian Blur Background -->
+    <ImageView
+        android:id="@+id/blurBg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:alpha="0.3"
+        android:scaleType="centerCrop" />
+
+    <!-- Main Upper & Control Section -->
+    <LinearLayout
+        android:id="@+id/layoutMainPlayerContent"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <!-- Upper Section: Left Cover + Right LRC Lyrics -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:focusable="false"
+            android:focusableInTouchMode="false"
+            android:orientation="horizontal"
+            android:padding="32dp">
+
+            <!-- Left Column: Album Cover View -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:focusable="false"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:id="@+id/playerCover"
+                    android:layout_width="280dp"
+                    android:layout_height="280dp"
+                    android:elevation="16dp"
+                    android:focusable="false"
+                    android:scaleType="centerCrop"
+                    android:src="@android:drawable/ic_menu_gallery" />
+
+                <TextView
+                    android:id="@+id/playerSongTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:textColor="@color/tv_text_primary"
+                    android:textSize="24sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/playerArtistName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:textColor="@color/tv_text_secondary"
+                    android:textSize="17sp" />
+
+                <TextView
+                    android:id="@+id/badgeQuality"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/bg_glass_panel"
+                    android:paddingHorizontal="12dp"
+                    android:paddingVertical="4dp"
+                    android:text="Hi-Res 无损"
+                    android:textColor="@color/tv_accent_green"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- Right Column: Real-time Lyrics (Non-focusable) -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="24dp"
+                android:layout_weight="1.2"
+                android:focusable="false"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:text="实时歌词"
+                    android:textColor="@color/tv_text_secondary"
+                    android:textSize="16sp" />
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rvLyrics"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Bottom Media Control Bar -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_glass_mini_player"
+            android:orientation="vertical"
+            android:paddingHorizontal="24dp"
+            android:paddingVertical="14dp">
+
+            <!-- Upper Row: Progress Seekbar + Unified Right-side Time Display (Current / Total) -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <SeekBar
+                    android:id="@+id/playerSeekBar"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:focusable="true"
+                    android:max="1000"
+                    android:nextFocusDown="@+id/btnPlayPause"
+                    android:paddingVertical="8dp" />
+
+                <TextView
+                    android:id="@+id/tvProgressTime"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="16dp"
+                    android:text="00:00 / 00:00"
+                    android:textColor="@color/tv_text_secondary"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- Lower Row: Centered Control Buttons Row -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnPrev"
+                    android:layout_width="wrap_content"
+                    android:layout_height="44dp"
+                    android:background="@drawable/selector_glass_button"
+                    android:drawableStart="@drawable/ic_prev_line"
+                    android:drawablePadding="6dp"
+                    android:focusable="true"
+                    android:nextFocusRight="@+id/btnPlayPause"
+                    android:nextFocusUp="@+id/playerSeekBar"
+                    android:paddingHorizontal="16dp"
+                    android:text=" 上一首"
+                    android:textColor="@color/tv_text_primary" />
+
+                <Button
+                    android:id="@+id/btnPlayPause"
+                    android:layout_width="wrap_content"
+                    android:layout_height="44dp"
+                    android:layout_marginStart="16dp"
+                    android:background="@drawable/selector_glass_button"
+                    android:drawableStart="@drawable/ic_play_compact"
+                    android:drawablePadding="6dp"
+                    android:focusable="true"
+                    android:nextFocusLeft="@+id/btnPrev"
+                    android:nextFocusRight="@+id/btnNext"
+                    android:nextFocusUp="@+id/playerSeekBar"
+                    android:paddingHorizontal="16dp"
+                    android:text=" 播放"
+                    android:textColor="@color/tv_accent_green"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/btnNext"
+                    android:layout_width="wrap_content"
+                    android:layout_height="44dp"
+                    android:layout_marginStart="16dp"
+                    android:background="@drawable/selector_glass_button"
+                    android:drawableStart="@drawable/ic_next_compact"
+                    android:drawablePadding="6dp"
+                    android:focusable="true"
+                    android:nextFocusLeft="@+id/btnPlayPause"
+                    android:nextFocusRight="@+id/btnPlayMode"
+                    android:nextFocusUp="@+id/playerSeekBar"
+                    android:paddingHorizontal="16dp"
+                    android:text=" 下一首"
+                    android:textColor="@color/tv_text_primary" />
+
+                <Button
+                    android:id="@+id/btnPlayMode"
+                    android:layout_width="wrap_content"
+                    android:layout_height="44dp"
+                    android:layout_marginStart="16dp"
+                    android:background="@drawable/selector_glass_button"
+                    android:drawableStart="@drawable/ic_mode_seq_line"
+                    android:drawablePadding="6dp"
+                    android:focusable="true"
+                    android:nextFocusLeft="@+id/btnNext"
+                    android:nextFocusRight="@+id/btnToggleQueue"
+                    android:nextFocusUp="@+id/playerSeekBar"
+                    android:paddingHorizontal="16dp"
+                    android:text=" 顺序播放"
+                    android:textColor="@color/tv_text_primary" />
+
+                <Button
+                    android:id="@+id/btnToggleQueue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="44dp"
+                    android:layout_marginStart="16dp"
+                    android:background="@drawable/selector_glass_button"
+                    android:drawableStart="@drawable/ic_library_line"
+                    android:drawablePadding="6dp"
+                    android:focusable="true"
+                    android:nextFocusLeft="@+id/btnPlayMode"
+                    android:nextFocusUp="@+id/playerSeekBar"
+                    android:paddingHorizontal="16dp"
+                    android:text=" 队列"
+                    android:textColor="@color/tv_accent_green"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Right Side Full-Height Frosted Liquid Glass Queue Drawer Panel -->
+    <LinearLayout
+        android:id="@+id/layoutQueueDrawer"
+        android:layout_width="380dp"
+        android:layout_height="match_parent"
+        android:layout_alignParentEnd="true"
+        android:background="@drawable/bg_glass_panel"
+        android:elevation="24dp"
+        android:orientation="vertical"
+        android:padding="20dp"
+        android:visibility="gone">
+
+        <!-- Queue Drawer Header -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_marginEnd="8dp"
+                android:src="@drawable/ic_library_line" />
+
+            <TextView
+                android:id="@+id/tvQueueHeader"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="播放队列"
+                android:textColor="@color/tv_text_primary"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btnCloseQueue"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:background="@drawable/selector_glass_button"
+                android:focusable="true"
+                android:paddingHorizontal="12dp"
+                android:text="关闭 ✕"
+                android:textColor="@color/tv_text_secondary"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvQueueActionHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="#3338BDF8"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="4dp"
+            android:text="提示：遥控器方向键切换操作图标"
+            android:textColor="@color/tv_accent_green"
+            android:textSize="12sp" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recyclerQueue"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="12dp"
+            android:layout_weight="1"
+            android:focusable="true" />
+    </LinearLayout>
+</RelativeLayout>

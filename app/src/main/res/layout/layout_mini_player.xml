@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/miniPlayer"
+    android:layout_width="match_parent"
+    android:layout_height="64dp"
+    android:background="@drawable/bg_glass_mini_player"
+    android:elevation="6dp"
+    android:focusable="true"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingLeft="16dp"
+    android:paddingRight="16dp">
+
+    <ImageView
+        android:id="@+id/miniCover"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:scaleType="centerCrop"
+        android:src="@android:drawable/ic_menu_gallery" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/miniTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="未播放歌曲"
+            android:textColor="@color/tv_text_primary"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/miniArtist"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="选择歌曲或歌单开始播放"
+            android:textColor="@color/tv_text_secondary"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/btnMiniPlayMode"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:background="?android:attr/selectableItemBackground"
+        android:drawableStart="@drawable/ic_mode_seq_line"
+        android:drawablePadding="4dp"
+        android:focusable="true"
+        android:text=" 顺序"
+        android:textColor="@color/tv_text_primary"
+        android:textSize="14sp" />
+
+    <Button
+        android:id="@+id/btnMiniPlayPause"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:layout_marginStart="8dp"
+        android:background="?android:attr/selectableItemBackground"
+        android:drawableStart="@drawable/ic_play_compact"
+        android:drawablePadding="4dp"
+        android:focusable="true"
+        android:text=" 播放"
+        android:textColor="@color/tv_accent_green"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <Button
+        android:id="@+id/btnMiniNext"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:layout_marginStart="8dp"
+        android:background="?android:attr/selectableItemBackground"
+        android:drawableStart="@drawable/ic_next_compact"
+        android:drawablePadding="4dp"
+        android:focusable="true"
+        android:text=" 下一首"
+        android:textColor="@color/tv_text_primary"
+        android:textSize="14sp" />
+</LinearLayout>

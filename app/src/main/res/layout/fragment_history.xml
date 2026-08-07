@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <!-- Header Row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:drawableStart="@drawable/ic_history_line"
+                android:drawablePadding="8dp"
+                android:text="全局播放历史"
+                android:textColor="@color/tv_text_primary"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvHistorySubtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="记录近期播放的历史曲目 • 按时间倒序"
+                android:textColor="@color/tv_text_secondary"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/btnPlayAllHistory"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:background="@drawable/selector_glass_button"
+            android:drawableStart="@drawable/ic_play_compact"
+            android:drawablePadding="6dp"
+            android:focusable="true"
+            android:nextFocusDown="@+id/rvHistoryList"
+            android:nextFocusRight="@+id/btnClearHistory"
+            android:paddingHorizontal="16dp"
+            android:text="播放历史全部"
+            android:textColor="@color/tv_accent_green"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnClearHistory"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:layout_marginStart="12dp"
+            android:background="@drawable/selector_glass_button"
+            android:drawableStart="@drawable/ic_delete_compact"
+            android:drawablePadding="6dp"
+            android:focusable="true"
+            android:nextFocusDown="@+id/rvHistoryList"
+            android:nextFocusLeft="@+id/btnPlayAllHistory"
+            android:paddingHorizontal="16dp"
+            android:text="清空历史"
+            android:textColor="#FF6B6B"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tvHistoryEmpty"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:text="暂无播放历史记录\n在播放器中播放曲目后即可在此处查看"
+        android:textColor="@color/tv_text_secondary"
+        android:textSize="16sp"
+        android:visibility="gone" />
+
+    <!-- History Song Cards List -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvHistoryList"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="16dp"
+        android:layout_weight="1"
+        android:focusable="true" />
+</LinearLayout>
