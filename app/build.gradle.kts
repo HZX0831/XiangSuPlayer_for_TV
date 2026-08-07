@@ -39,6 +39,7 @@ android {
     }
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 }
 
@@ -60,7 +61,7 @@ dependencies {
     // Leanback for TV
     implementation("androidx.leanback:leanback:1.0.0")
 
-    // ExoPlayer / Media3
+    // ExoPlayer
     implementation("com.google.android.exoplayer:exoplayer-core:2.18.7")
     implementation("com.google.android.exoplayer:exoplayer-ui:2.18.7")
 
@@ -77,4 +78,7 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
+    // Gson
+    implementation("com.google.code.gson:gson:2.10.1")
 }

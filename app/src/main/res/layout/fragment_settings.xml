@@ -109,7 +109,7 @@
                 android:drawablePadding="10dp"
                 android:focusable="true"
                 android:gravity="start|center_vertical"
-                android:nextFocusRight="@+id/cardDev1"
+                android:nextFocusRight="@+id/btnDonateApp"
                 android:paddingLeft="16dp"
                 android:paddingRight="16dp"
                 android:text="关于与团队"
@@ -263,21 +263,11 @@
                         android:nextFocusLeft="@+id/btnTabSource"
                         android:paddingLeft="12dp"
                         android:paddingRight="12dp"
-                        android:text="网易云音乐 核心原生音源 (当前唯一已启用)"
+                        android:text="网易云音乐"
                         android:textColor="@color/tv_accent_green"
                         android:textSize="15sp"
                         android:textStyle="bold" />
                 </RadioGroup>
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:background="@drawable/bg_glass_panel"
-                    android:padding="20dp"
-                    android:text="引擎协议说明：\n• 纯原生通信：WEAPI / EAPI 双通道安全协议\n• 歌词同步引擎：UTF-8 逐字/逐句 LRC 实时同步\n• 高保真解码驱动：ExoPlayer Media3 零失真输出"
-                    android:textColor="@color/tv_text_secondary"
-                    android:textSize="14sp" />
             </LinearLayout>
 
             <!-- Panel 3: Wallpaper Options -->
@@ -517,7 +507,7 @@
                     android:textStyle="bold" />
             </LinearLayout>
 
-            <!-- Panel 5: About Section -->
+            <!-- Panel 5: About & Development Team & Acknowledgements & Donate -->
             <ScrollView
                 android:id="@+id/panelAbout"
                 android:layout_width="match_parent"
@@ -527,7 +517,8 @@
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical">
+                    android:orientation="vertical"
+                    android:paddingBottom="24dp">
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -537,30 +528,261 @@
                         android:textSize="18sp"
                         android:textStyle="bold" />
 
+                    <!-- App Info & Donate Button Glass Card -->
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
+                        android:layout_marginTop="10dp"
+                        android:background="@drawable/bg_glass_panel"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="16dp">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/tvAppVersion"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="像素播放器 TV v2.0.0 Preview"
+                                android:textColor="@color/tv_accent_green"
+                                android:textSize="20sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp"
+                                android:text="专为 Android 大屏电视与盒子量身打造的高保真音乐播放客户端。"
+                                android:textColor="@color/tv_text_secondary"
+                                android:textSize="14sp" />
+                        </LinearLayout>
+
+                        <!-- Donate Button placed right beside Version Name -->
+                        <Button
+                            android:id="@+id/btnDonateApp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="44dp"
+                            android:layout_marginStart="16dp"
+                            android:background="@drawable/selector_glass_button"
+                            android:drawableStart="@drawable/ic_heart_line"
+                            android:drawablePadding="6dp"
+                            android:focusable="true"
+                            android:nextFocusLeft="@+id/btnTabAbout"
+                            android:paddingHorizontal="16dp"
+                            android:text="支持与捐赠"
+                            android:textColor="#FF6B6B"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <!-- Section: 开发团队 -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="20dp"
+                        android:text="开发团队"
+                        android:textColor="@color/tv_text_primary"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
                         android:background="@drawable/bg_glass_panel"
                         android:orientation="vertical"
-                        android:padding="20dp">
+                        android:padding="12dp">
 
-                        <TextView
-                            android:layout_width="wrap_content"
+                        <!-- Dev 1: 想玩小恐龙 -->
+                        <LinearLayout
+                            android:id="@+id/cardDev1"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="像素播放器 TV v2.0.0"
-                            android:textColor="@color/tv_accent_green"
-                            android:textSize="20sp"
-                            android:textStyle="bold" />
+                            android:background="@drawable/selector_card_bg"
+                            android:focusable="true"
+                            android:gravity="center_vertical"
+                            android:nextFocusLeft="@+id/btnTabAbout"
+                            android:orientation="horizontal"
+                            android:padding="10dp">
 
-                        <TextView
-                            android:layout_width="wrap_content"
+                            <ImageView
+                                android:layout_width="44dp"
+                                android:layout_height="44dp"
+                                android:layout_marginEnd="12dp"
+                                android:scaleType="centerCrop"
+                                android:src="@drawable/avatar_produce" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="想玩小恐龙"
+                                    android:textColor="@color/tv_text_primary"
+                                    android:textSize="16sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:text="iOS / Mac / TV 开发"
+                                    android:textColor="@color/tv_text_secondary"
+                                    android:textSize="13sp" />
+                            </LinearLayout>
+                        </LinearLayout>
+
+                        <!-- Dev 2: R3n_011 -->
+                        <LinearLayout
+                            android:id="@+id/cardDev2"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="8dp"
-                            android:text="专为 Android 大屏电视与盒子量身打造的高保真音乐播放客户端。"
-                            android:textColor="@color/tv_text_secondary"
-                            android:textSize="14sp" />
+                            android:background="@drawable/selector_card_bg"
+                            android:focusable="true"
+                            android:gravity="center_vertical"
+                            android:nextFocusLeft="@+id/btnTabAbout"
+                            android:orientation="horizontal"
+                            android:padding="10dp">
+
+                            <ImageView
+                                android:layout_width="44dp"
+                                android:layout_height="44dp"
+                                android:layout_marginEnd="12dp"
+                                android:scaleType="centerCrop"
+                                android:src="@drawable/avatar_r3n" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="R3n_011"
+                                    android:textColor="@color/tv_text_primary"
+                                    android:textSize="16sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:text="Android 开发"
+                                    android:textColor="@color/tv_text_secondary"
+                                    android:textSize="13sp" />
+                            </LinearLayout>
+                        </LinearLayout>
+
+                        <!-- Dev 3: HZX0831 -->
+                        <LinearLayout
+                            android:id="@+id/cardDev3"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:background="@drawable/selector_card_bg"
+                            android:focusable="true"
+                            android:gravity="center_vertical"
+                            android:nextFocusLeft="@+id/btnTabAbout"
+                            android:orientation="horizontal"
+                            android:padding="10dp">
+
+                            <ImageView
+                                android:layout_width="44dp"
+                                android:layout_height="44dp"
+                                android:layout_marginEnd="12dp"
+                                android:scaleType="centerCrop"
+                                android:src="@drawable/avatar_hzx0831" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="HZX0831"
+                                    android:textColor="@color/tv_text_primary"
+                                    android:textSize="16sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:text="TV 开发 / 测试"
+                                    android:textColor="@color/tv_text_secondary"
+                                    android:textSize="13sp" />
+                            </LinearLayout>
+                        </LinearLayout>
                     </LinearLayout>
+
+                    <!-- Section: 鸣谢与贡献 -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="20dp"
+                        android:text="鸣谢与特别贡献"
+                        android:textColor="@color/tv_text_primary"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:id="@+id/cardThanks1"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:background="@drawable/selector_card_bg"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:nextFocusLeft="@+id/btnTabAbout"
+                        android:orientation="horizontal"
+                        android:padding="12dp">
+
+                        <ImageView
+                            android:layout_width="44dp"
+                            android:layout_height="44dp"
+                            android:layout_marginEnd="12dp"
+                            android:scaleType="centerCrop"
+                            android:src="@drawable/avatar_sennagi" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="千凪Sennagi"
+                                android:textColor="@color/tv_text_primary"
+                                android:textSize="16sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="感谢对像素播放器的支持与帮助"
+                                android:textColor="@color/tv_accent_green"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+                    </LinearLayout>
+
                 </LinearLayout>
             </ScrollView>
         </FrameLayout>

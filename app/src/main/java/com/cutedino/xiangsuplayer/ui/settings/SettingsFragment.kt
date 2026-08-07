@@ -6,8 +6,12 @@ import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
+import com.cutedino.xiangsuplayer.BuildConfig
+import com.cutedino.xiangsuplayer.R
 import com.cutedino.xiangsuplayer.core.audio.PlayerController
 import com.cutedino.xiangsuplayer.core.focus.DPadFocusHelper
 import com.cutedino.xiangsuplayer.core.model.AudioQuality
@@ -39,8 +43,49 @@ class SettingsFragment : Fragment() {
         setupSourceOptions()
         setupWallpaperOptions()
         setupCacheActions()
+        setupAboutDevCards()
         setupDirectionalLocks()
         updateCacheSizeText()
+
+        // Sync Version Name with BuildConfig / gradle
+        binding.tvAppVersion.text = "像素播放器 TV v${BuildConfig.VERSION_NAME}"
+    }
+
+    private fun setupAboutDevCards() {
+        val b = _binding ?: return
+        DPadFocusHelper.setupFocusScale(b.cardDev1, 1.02f)
+        DPadFocusHelper.setupFocusScale(b.cardDev2, 1.02f)
+        DPadFocusHelper.setupFocusScale(b.cardDev3, 1.02f)
+        DPadFocusHelper.setupFocusScale(b.cardThanks1, 1.02f)
+
+        DPadFocusHelper.setupFocusScale(b.btnDonateApp)
+        b.btnDonateApp.setOnClickListener {
+            showDonateDialog()
+        }
+    }
+
+    private fun showDonateDialog() {
+        val ctx = context ?: return
+        val dialogView = LayoutInflater.from(ctx).inflate(R.layout.dialog_donate, null)
+        val dialog = AlertDialog.Builder(ctx)
+            .setView(dialogView)
+            .create()
+
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+
+        val btnClose = dialogView.findViewById<Button>(R.id.btnCloseDonate)
+        if (btnClose != null) {
+            DPadFocusHelper.setupFocusScale(btnClose)
+            btnClose.setOnClickListener {
+                dialog.dismiss()
+            }
+        }
+
+        dialog.show()
+
+        btnClose?.post {
+            btnClose.requestFocus()
+        }
     }
 
     private fun setupWallpaperOptions() {
@@ -98,7 +143,7 @@ class SettingsFragment : Fragment() {
             b.etCustomWallpaperUrl.setText("")
             updateOpacityAndApply(50)
             (activity as? MainActivity)?.loadWallpaper()
-            Toast.makeText(context, "已恢复 Bing 每日壁纸与默认 50% 黑化透明度", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "已恢复 Bing 每日壁纸 (默认 50% 暗色遮罩)", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -112,147 +157,73 @@ class SettingsFragment : Fragment() {
         val b = _binding ?: return
         b.tvOpacityInfo.text = "背景暗色遮罩黑化程度：$percent%"
 
-        val buttons = listOf(
-            b.btnOpacity0 to 0,
-            b.btnOpacity25 to 25,
-            b.btnOpacity50 to 50,
-            b.btnOpacity75 to 75,
-            b.btnOpacity90 to 90
-        )
-
-        for ((btn, valP) in buttons) {
-            if (valP == percent) {
-                btn.setTextColor(Color.parseColor("#FFA9F06A"))
-            } else {
-                btn.setTextColor(Color.parseColor("#FFFFFF"))
-            }
-        }
+        b.btnOpacity0.setTextColor(if (percent == 0) Color.parseColor("#FFA9F06A") else Color.parseColor("#F8FAFC"))
+        b.btnOpacity25.setTextColor(if (percent == 25) Color.parseColor("#FFA9F06A") else Color.parseColor("#F8FAFC"))
+        b.btnOpacity50.setTextColor(if (percent == 50) Color.parseColor("#FFA9F06A") else Color.parseColor("#F8FAFC"))
+        b.btnOpacity75.setTextColor(if (percent == 75) Color.parseColor("#FFA9F06A") else Color.parseColor("#F8FAFC"))
+        b.btnOpacity90.setTextColor(if (percent == 90) Color.parseColor("#FFA9F06A") else Color.parseColor("#F8FAFC"))
     }
 
     private fun setupSourceOptions() {
         val b = _binding ?: return
         DPadFocusHelper.setupFocusScale(b.rbSourceNetease)
-        b.rbSourceNetease.setOnClickListener {
-            b.rbSourceNetease.isChecked = true
-            Toast.makeText(context, "当前已选中【网易云音乐】核心原生音源，暂无可切换的其它音源", Toast.LENGTH_SHORT).show()
-        }
     }
 
     private fun setupDirectionalLocks() {
         val b = _binding ?: return
+        val categoryTabs = listOf(
+            b.btnTabAudio,
+            b.btnTabSource,
+            b.btnTabWallpaper,
+            b.btnTabCache,
+            b.btnTabAbout
+        )
 
-        b.btnTabAudio.setOnKeyListener { _, keyCode, event ->
-            if (event.action == KeyEvent.ACTION_DOWN) {
-                when (keyCode) {
-                    KeyEvent.KEYCODE_DPAD_UP -> {
+        for (btn in categoryTabs) {
+            btn.setOnKeyListener { _, keyCode, event ->
+                if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                    if (btn == b.btnTabAudio) {
                         onReturnToTopNav?.invoke()
-                        true
+                        return@setOnKeyListener true
                     }
-                    KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                        b.rbLossless.requestFocus()
-                        true
-                    }
-                    else -> false
                 }
-            } else false
-        }
-
-        b.btnTabSource.setOnKeyListener { _, keyCode, event ->
-            if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                b.rbSourceNetease.requestFocus()
-                true
-            } else false
-        }
-
-        b.btnTabWallpaper.setOnKeyListener { _, keyCode, event ->
-            if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                b.rbBingWallpaper.requestFocus()
-                true
-            } else false
-        }
-
-        b.btnTabCache.setOnKeyListener { _, keyCode, event ->
-            if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                b.btnClearCache.requestFocus()
-                true
-            } else false
-        }
-
-        val leftToAudioTabListener = View.OnKeyListener { _, keyCode, event ->
-            if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-                b.btnTabAudio.requestFocus()
-                true
-            } else false
-        }
-
-        b.rbStandard.setOnKeyListener(leftToAudioTabListener)
-        b.rbHigh.setOnKeyListener(leftToAudioTabListener)
-        b.rbLossless.setOnKeyListener(leftToAudioTabListener)
-        b.rbHires.setOnKeyListener(leftToAudioTabListener)
-        b.btnSaveAudioSettings.setOnKeyListener(leftToAudioTabListener)
-
-        b.rbSourceNetease.setOnKeyListener { _, keyCode, event ->
-            if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-                b.btnTabSource.requestFocus()
-                true
-            } else false
-        }
-
-        val leftToWallpaperTabListener = View.OnKeyListener { _, keyCode, event ->
-            if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-                b.btnTabWallpaper.requestFocus()
-                true
-            } else false
-        }
-
-        b.rbBingWallpaper.setOnKeyListener(leftToWallpaperTabListener)
-        b.rbCustomWallpaper.setOnKeyListener(leftToWallpaperTabListener)
-        b.etCustomWallpaperUrl.setOnKeyListener(leftToWallpaperTabListener)
-        b.btnOpacity0.setOnKeyListener(leftToWallpaperTabListener)
-        b.btnSaveWallpaper.setOnKeyListener(leftToWallpaperTabListener)
-        b.btnResetBingWallpaper.setOnKeyListener(leftToWallpaperTabListener)
-
-        b.btnClearCache.setOnKeyListener { _, keyCode, event ->
-            if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-                b.btnTabCache.requestFocus()
-                true
-            } else false
+                false
+            }
         }
     }
 
     private fun setupCategoryTabs() {
         val b = _binding ?: return
-
-        DPadFocusHelper.setupFocusScale(b.btnTabAudio)
-        DPadFocusHelper.setupFocusScale(b.btnTabSource)
-        DPadFocusHelper.setupFocusScale(b.btnTabWallpaper)
-        DPadFocusHelper.setupFocusScale(b.btnTabCache)
-        DPadFocusHelper.setupFocusScale(b.btnTabAbout)
-
-        b.btnTabAudio.setOnClickListener { switchPanel(0) }
-        b.btnTabSource.setOnClickListener { switchPanel(1) }
-        b.btnTabWallpaper.setOnClickListener { switchPanel(2) }
-        b.btnTabCache.setOnClickListener { switchPanel(3) }
-        b.btnTabAbout.setOnClickListener { switchPanel(4) }
-
-        b.btnTabAudio.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) switchPanel(0) }
-        b.btnTabSource.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) switchPanel(1) }
-        b.btnTabWallpaper.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) switchPanel(2) }
-        b.btnTabCache.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) switchPanel(3) }
-        b.btnTabAbout.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) switchPanel(4) }
-    }
-
-    private fun switchPanel(index: Int) {
-        val b = _binding ?: return
-        val tabs = listOf(b.btnTabAudio, b.btnTabSource, b.btnTabWallpaper, b.btnTabCache, b.btnTabAbout)
-        val panels = listOf(b.panelAudio, b.panelSource, b.panelWallpaper, b.panelCache, b.panelAbout)
+        val tabs = listOf(
+            b.btnTabAudio,
+            b.btnTabSource,
+            b.btnTabWallpaper,
+            b.btnTabCache,
+            b.btnTabAbout
+        )
+        val panels = listOf(
+            b.panelAudio,
+            b.panelSource,
+            b.panelWallpaper,
+            b.panelCache,
+            b.panelAbout
+        )
 
         for (i in tabs.indices) {
+            DPadFocusHelper.setupFocusScale(tabs[i])
+            tabs[i].setOnClickListener {
+                switchTab(i, tabs, panels)
+            }
+        }
+    }
+
+    private fun switchTab(index: Int, tabs: List<View>, panels: List<View>) {
+        for (i in tabs.indices) {
             if (i == index) {
-                tabs[i].setTextColor(Color.parseColor("#FFA9F06A"))
+                (tabs[i] as? android.widget.Button)?.setTextColor(Color.parseColor("#FFA9F06A"))
                 panels[i].visibility = View.VISIBLE
             } else {
-                tabs[i].setTextColor(Color.parseColor("#94A3B8"))
+                (tabs[i] as? android.widget.Button)?.setTextColor(Color.parseColor("#94A3B8"))
                 panels[i].visibility = View.GONE
             }
         }

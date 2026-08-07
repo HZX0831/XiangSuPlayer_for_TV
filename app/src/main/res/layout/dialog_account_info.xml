@@ -1,61 +1,82 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:gravity="center"
-    android:orientation="vertical"
-    android:background="@color/tv_card_bg"
-    android:padding="28dp"
     android:layout_width="400dp"
     android:layout_height="wrap_content"
-    android:elevation="16dp">
+    android:background="@drawable/bg_glass_panel"
+    android:elevation="16dp"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="28dp">
+
     <TextView
-        android:textSize="20sp"
-        android:textStyle="bold"
-        android:textColor="@color/tv_text_primary"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="�� 网易云账号信息"/>
+        android:drawableStart="@drawable/ic_history_line"
+        android:drawablePadding="10dp"
+        android:text="网易云账号信息"
+        android:textColor="@color/tv_text_primary"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginBottom="16dp"
+        android:background="#3338BDF8" />
+
+    <!-- User Nickname & UID -->
     <TextView
-        android:textSize="22sp"
-        android:textStyle="bold"
-        android:textColor="@color/tv_accent_green"
         android:id="@+id/tvDialogNick"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"/>
+        android:textColor="@color/tv_accent_green"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+
     <TextView
-        android:textSize="14sp"
-        android:textColor="@color/tv_text_secondary"
         android:id="@+id/tvDialogUid"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"/>
+        android:layout_marginTop="6dp"
+        android:textColor="@color/tv_text_secondary"
+        android:textSize="14sp" />
+
+    <!-- Buttons Row -->
     <LinearLayout
-        android:gravity="center"
-        android:orientation="horizontal"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="24dp">
+        android:layout_marginTop="24dp"
+        android:gravity="center"
+        android:orientation="horizontal">
+
         <Button
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:textColor="#ff4d4f"
-            android:id="@+id/btnDialogLogout"
-            android:paddingLeft="20dp"
-            android:paddingRight="20dp"
-            android:focusable="true"
-            android:layout_width="wrap_content"
-            android:layout_height="44dp"
-            android:text="�� 退出登录"
-            android:layout_marginEnd="12dp"/>
-        <Button
-            android:textSize="14sp"
-            android:textColor="@color/tv_text_primary"
             android:id="@+id/btnDialogClose"
-            android:paddingLeft="20dp"
-            android:paddingRight="20dp"
-            android:focusable="true"
             android:layout_width="wrap_content"
             android:layout_height="44dp"
-            android:text="关闭"/>
+            android:layout_marginEnd="16dp"
+            android:background="@drawable/selector_glass_button"
+            android:focusable="true"
+            android:paddingLeft="24dp"
+            android:paddingRight="24dp"
+            android:text="关闭 ✕"
+            android:textColor="@color/tv_text_primary"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnDialogLogout"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:background="@drawable/selector_glass_button"
+            android:drawableStart="@drawable/ic_trash_line"
+            android:drawablePadding="6dp"
+            android:focusable="true"
+            android:paddingLeft="20dp"
+            android:paddingRight="20dp"
+            android:text="退出登录"
+            android:textColor="#ff4d4f"
+            android:textSize="14sp"
+            android:textStyle="bold" />
     </LinearLayout>
 </LinearLayout>

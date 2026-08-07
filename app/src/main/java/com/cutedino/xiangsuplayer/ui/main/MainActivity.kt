@@ -298,10 +298,14 @@ class MainActivity : AppCompatActivity() {
         val uid = NcmApi.userId
         tvUid.text = "UID: ${if (uid > 0) uid else "未知"}"
 
-        DPadFocusHelper.setupFocusScale(btnLogout)
-        DPadFocusHelper.setupFocusScale(btnClose)
+        if (btnClose != null) DPadFocusHelper.setupFocusScale(btnClose)
+        if (btnLogout != null) DPadFocusHelper.setupFocusScale(btnLogout)
 
-        btnLogout.setOnClickListener {
+        var canLogout = false
+        dialogView.postDelayed({ canLogout = true }, 400)
+
+        btnLogout?.setOnClickListener {
+            if (!canLogout) return@setOnClickListener
             lifecycleScope.launch {
                 NcmApi.logout()
                 updateLoginStatus()
@@ -312,11 +316,15 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        btnClose.setOnClickListener {
+        btnClose?.setOnClickListener {
             dialog.dismiss()
         }
 
         dialog.show()
+
+        btnClose?.post {
+            btnClose.requestFocus()
+        }
     }
 
     private fun updateTabStyle(selectedButton: Button) {
