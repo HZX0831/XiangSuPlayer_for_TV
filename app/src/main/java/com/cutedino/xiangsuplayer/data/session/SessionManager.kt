@@ -36,6 +36,23 @@ object SessionManager {
         }
     }
 
+    var soundSourceMode: String
+        get() = if (::prefs.isInitialized) prefs.getString("sound_source_mode", "auto_race") ?: "auto_race" else "auto_race"
+        set(value) { if (::prefs.isInitialized) prefs.edit().putString("sound_source_mode", value).apply() }
+
+    var enabledSoundSources: Set<String>
+        get() {
+            if (!::prefs.isInitialized) return setOf("netease_native", "ikun", "xinghai", "changqing", "nianxin")
+            val raw = prefs.getString("enabled_sound_sources", null)
+            if (raw.isNullOrBlank()) return setOf("netease_native", "ikun", "xinghai", "changqing", "nianxin")
+            return raw.split(",").filter { it.isNotBlank() }.toSet()
+        }
+        set(value) {
+            if (::prefs.isInitialized) {
+                prefs.edit().putString("enabled_sound_sources", value.joinToString(",")).apply()
+            }
+        }
+
     var customWallpaperUrl: String?
         get() = if (::prefs.isInitialized) prefs.getString("custom_wallpaper_url", null) else null
         set(value) { if (::prefs.isInitialized) prefs.edit().putString("custom_wallpaper_url", value).apply() }

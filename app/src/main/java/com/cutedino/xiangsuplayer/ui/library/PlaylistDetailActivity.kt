@@ -13,6 +13,7 @@ import com.cutedino.xiangsuplayer.R
 import com.cutedino.xiangsuplayer.core.audio.PlayerController
 import com.cutedino.xiangsuplayer.core.focus.DPadFocusHelper
 import com.cutedino.xiangsuplayer.core.model.Song
+import com.cutedino.xiangsuplayer.core.model.toSong
 import com.cutedino.xiangsuplayer.data.session.SessionManager
 import com.cutedino.xiangsuplayer.databinding.ActivityPlaylistDetailBinding
 import com.cutedino.xiangsuplayer.databinding.ItemPlaylistSongGridBinding
@@ -141,14 +142,7 @@ class PlaylistDetailActivity : AppCompatActivity() {
             allSongs.clear()
             for (item in trackList) {
                 val map = item as? Map<String, Any?> ?: continue
-                val id = map.ncmLong("id").toString()
-                val name = map.ncmString("name")
-                val arList = map.ncmList("ar")
-                val artist = if (arList.isNotEmpty()) (arList[0] as? Map<String, Any?>)?.ncmString("name") ?: "未知歌手" else "未知歌手"
-                val alObj = map.ncmObj("al")
-                val album = alObj.ncmString("name")
-                val picUrl = alObj.ncmString("picUrl")
-                allSongs.add(Song(id = id, title = name, artist = artist, album = album, coverUrl = picUrl, durationMs = 0L))
+                allSongs.add(map.toSong())
             }
 
             binding.tvDetailMeta.text = "共 ${allSongs.size} 首歌曲"

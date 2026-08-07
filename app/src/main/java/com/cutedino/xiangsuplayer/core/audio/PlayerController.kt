@@ -7,6 +7,7 @@ import androidx.lifecycle.MutableLiveData
 import com.cutedino.xiangsuplayer.core.model.AudioQuality
 import com.cutedino.xiangsuplayer.core.model.LyricLine
 import com.cutedino.xiangsuplayer.core.model.Song
+import com.cutedino.xiangsuplayer.core.model.toSong
 import com.cutedino.xiangsuplayer.core.source.SoundSourceRepository
 import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.MediaItem
@@ -18,6 +19,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import net.moriafly.ncm.NcmApi
+import net.moriafly.ncm.ncmList
 
 enum class PlayMode(val displayName: String, val icon: String) {
     SEQUENCE("顺序播放", "🔁"),
@@ -61,6 +64,7 @@ object PlayerController {
     val quality: LiveData<AudioQuality> = _quality
 
     private val playlist = mutableListOf<Song>()
+    private val originalPlaylist = mutableListOf<Song>()
     private val historyList = mutableListOf<Song>()
 
     private val _playHistory = MutableLiveData<List<Song>>(emptyList())
@@ -96,26 +100,30 @@ object PlayerController {
                 exoPlayer.seekTo(0)
                 exoPlayer.play()
             }
-            PlayMode.SHUFFLE -> {
-                if (playlist.isNotEmpty()) {
-                    currentIndex = (0 until playlist.size).random()
-                    playSongAtIndex(currentIndex)
-                }
-            }
             else -> playNext()
         }
     }
 
     fun playSong(song: Song, list: List<Song> = emptyList()) {
         if (list.isNotEmpty()) {
+            originalPlaylist.clear()
+            originalPlaylist.addAll(list)
             playlist.clear()
-            playlist.addAll(list)
-            currentIndex = playlist.indexOfFirst { it.id == song.id }
-            _playlistLiveData.postValue(playlist)
-        } else if (!playlist.contains(song)) {
+            if (_playMode.value == PlayMode.SHUFFLE) {
+                val others = list.filterNot { it.id == song.id }.shuffled()
+                playlist.add(song)
+                playlist.addAll(others)
+                currentIndex = 0
+            } else {
+                playlist.addAll(list)
+                currentIndex = playlist.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+            }
+            _playlistLiveData.postValue(playlist.toList())
+        } else if (!playlist.any { it.id == song.id }) {
+            originalPlaylist.add(song)
             playlist.add(song)
             currentIndex = playlist.size - 1
-            _playlistLiveData.postValue(playlist)
+            _playlistLiveData.postValue(playlist.toList())
         } else {
             currentIndex = playlist.indexOfFirst { it.id == song.id }
         }
@@ -128,6 +136,7 @@ object PlayerController {
         _currentSong.postValue(song)
         fetchAndPlayUrl(song)
         fetchLyrics(song)
+        fetchCoverIfNeeded(song)
     }
 
     fun playSongAtIndex(index: Int) {
@@ -137,13 +146,63 @@ object PlayerController {
             _currentSong.postValue(song)
             fetchAndPlayUrl(song)
             fetchLyrics(song)
+            fetchCoverIfNeeded(song)
         }
+    }
+
+    private fun fetchCoverIfNeeded(song: Song) {
+        if (song.coverUrl.isBlank() || song.coverUrl.contains("6ffA2_Xx4J-yXZDKm4p8fw==")) {
+            scope.launch {
+                try {
+                    val detailRes = NcmApi.songDetail(listOf(song.id))
+                    val detailData = detailRes.getOrNull()
+                    if (detailData != null) {
+                        val detailSongs = detailData.ncmList("songs")
+                        if (detailSongs.isNotEmpty()) {
+                            val realSong = (detailSongs[0] as? Map<String, Any?>)?.toSong()
+                            if (realSong != null && realSong.coverUrl.isNotBlank() && !realSong.coverUrl.contains("6ffA2_Xx4J-yXZDKm4p8fw==")) {
+                                _currentSong.postValue(realSong)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+
+    fun insertAsNext(song: Song) {
+        if (playlist.isEmpty()) {
+            playSong(song)
+            return
+        }
+
+        val current = _currentSong.value
+        if (current?.id == song.id) return
+
+        val existingIndex = playlist.indexOfFirst { it.id == song.id }
+        if (existingIndex != -1) {
+            playlist.removeAt(existingIndex)
+            if (existingIndex < currentIndex) {
+                currentIndex--
+            }
+        }
+
+        if (!originalPlaylist.any { it.id == song.id }) {
+            originalPlaylist.add(song)
+        }
+
+        val insertIndex = (currentIndex + 1).coerceIn(0, playlist.size)
+        playlist.add(insertIndex, song)
+        _playlistLiveData.postValue(playlist.toList())
     }
 
     private fun fetchAndPlayUrl(song: Song) {
         scope.launch {
             val result = SoundSourceRepository.getStreamUrl(song, _quality.value ?: AudioQuality.LOSSLESS)
-            val playUrl = result.getOrNull()
+            val streamResult = result.getOrNull()
+            val playUrl = streamResult?.streamUrl
             if (!playUrl.isNullOrEmpty()) {
                 val mediaItem = MediaItem.fromUri(Uri.parse(playUrl))
                 exoPlayer.setMediaItem(mediaItem)
@@ -173,21 +232,13 @@ object PlayerController {
 
     fun playNext() {
         if (playlist.isEmpty()) return
-        if (_playMode.value == PlayMode.SHUFFLE) {
-            currentIndex = (0 until playlist.size).random()
-        } else {
-            currentIndex = (currentIndex + 1) % playlist.size
-        }
+        currentIndex = (currentIndex + 1) % playlist.size
         playSongAtIndex(currentIndex)
     }
 
     fun playPrevious() {
         if (playlist.isEmpty()) return
-        if (_playMode.value == PlayMode.SHUFFLE) {
-            currentIndex = (0 until playlist.size).random()
-        } else {
-            currentIndex = if (currentIndex - 1 < 0) playlist.size - 1 else currentIndex - 1
-        }
+        currentIndex = if (currentIndex - 1 < 0) playlist.size - 1 else currentIndex - 1
         playSongAtIndex(currentIndex)
     }
 
@@ -209,6 +260,30 @@ object PlayerController {
     fun togglePlayMode() {
         val next = (_playMode.value ?: PlayMode.SEQUENCE).next()
         _playMode.postValue(next)
+
+        val current = _currentSong.value
+        if (next == PlayMode.SHUFFLE) {
+            if (playlist.isNotEmpty()) {
+                val others = if (current != null) playlist.filterNot { it.id == current.id } else playlist
+                val shuffled = others.shuffled()
+                playlist.clear()
+                if (current != null) {
+                    playlist.add(current)
+                }
+                playlist.addAll(shuffled)
+                currentIndex = 0
+                _playlistLiveData.postValue(playlist.toList())
+            }
+        } else {
+            if (originalPlaylist.isNotEmpty()) {
+                playlist.clear()
+                playlist.addAll(originalPlaylist)
+                if (current != null) {
+                    currentIndex = playlist.indexOfFirst { it.id == current.id }.coerceAtLeast(0)
+                }
+                _playlistLiveData.postValue(playlist.toList())
+            }
+        }
     }
 
     fun setQuality(quality: AudioQuality) {
@@ -229,8 +304,18 @@ object PlayerController {
     }
 
     fun removeFromPlaylist(song: Song) {
-        playlist.removeAll { it.id == song.id }
-        _playlistLiveData.postValue(playlist)
+        val removeIndex = playlist.indexOfFirst { it.id == song.id }
+        if (removeIndex != -1) {
+            playlist.removeAt(removeIndex)
+            originalPlaylist.removeAll { it.id == song.id }
+            if (removeIndex < currentIndex) {
+                currentIndex--
+            } else if (removeIndex == currentIndex && playlist.isNotEmpty()) {
+                currentIndex = currentIndex.coerceIn(0, playlist.size - 1)
+                playSongAtIndex(currentIndex)
+            }
+            _playlistLiveData.postValue(playlist.toList())
+        }
     }
 
     private fun startProgressTracker() {

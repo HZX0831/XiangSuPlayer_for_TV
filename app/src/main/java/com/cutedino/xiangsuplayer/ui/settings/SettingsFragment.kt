@@ -166,7 +166,51 @@ class SettingsFragment : Fragment() {
 
     private fun setupSourceOptions() {
         val b = _binding ?: return
-        DPadFocusHelper.setupFocusScale(b.rbSourceNetease)
+
+        DPadFocusHelper.setupFocusScale(b.cbSourceNetease)
+        DPadFocusHelper.setupFocusScale(b.cbSourceIkun)
+        DPadFocusHelper.setupFocusScale(b.cbSourceXingHai)
+        DPadFocusHelper.setupFocusScale(b.cbSourceChangQing)
+        DPadFocusHelper.setupFocusScale(b.cbSourceNianXin)
+        DPadFocusHelper.setupFocusScale(b.btnSelectAllSources)
+        DPadFocusHelper.setupFocusScale(b.btnSaveSourceSettings)
+
+        val enabledSources = SessionManager.enabledSoundSources
+        com.cutedino.xiangsuplayer.core.source.SoundSourceRepository.enabledSourceIds = enabledSources
+
+        b.cbSourceNetease.isChecked = "netease_native" in enabledSources
+        b.cbSourceIkun.isChecked = "ikun" in enabledSources
+        b.cbSourceXingHai.isChecked = "xinghai" in enabledSources
+        b.cbSourceChangQing.isChecked = "changqing" in enabledSources
+        b.cbSourceNianXin.isChecked = "nianxin" in enabledSources
+
+        b.btnSelectAllSources.setOnClickListener {
+            b.cbSourceNetease.isChecked = true
+            b.cbSourceIkun.isChecked = true
+            b.cbSourceXingHai.isChecked = true
+            b.cbSourceChangQing.isChecked = true
+            b.cbSourceNianXin.isChecked = true
+            Toast.makeText(context, "已勾选全部音源节点", Toast.LENGTH_SHORT).show()
+        }
+
+        b.btnSaveSourceSettings.setOnClickListener {
+            val selected = mutableSetOf<String>()
+            if (b.cbSourceNetease.isChecked) selected.add("netease_native")
+            if (b.cbSourceIkun.isChecked) selected.add("ikun")
+            if (b.cbSourceXingHai.isChecked) selected.add("xinghai")
+            if (b.cbSourceChangQing.isChecked) selected.add("changqing")
+            if (b.cbSourceNianXin.isChecked) selected.add("nianxin")
+
+            if (selected.isEmpty()) {
+                Toast.makeText(context, "请至少勾选一个并发音源", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            SessionManager.enabledSoundSources = selected
+            com.cutedino.xiangsuplayer.core.source.SoundSourceRepository.enabledSourceIds = selected
+
+            Toast.makeText(context, "已成功配置 ${selected.size} 个音源并发竞速！", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun setupDirectionalLocks() {

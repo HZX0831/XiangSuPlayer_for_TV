@@ -163,12 +163,25 @@ class PlayerActivity : AppCompatActivity() {
             animator.addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
                     binding.recyclerQueue.post {
+                        scrollToCurrentSongCentered()
                         binding.recyclerQueue.requestFocus()
                     }
                 }
             })
         }
         animator.start()
+    }
+
+    private fun scrollToCurrentSongCentered() {
+        val current = PlayerController.currentSong.value ?: return
+        val index = queueList.indexOfFirst { it.id == current.id }
+        if (index != -1) {
+            val layoutManager = binding.recyclerQueue.layoutManager as? LinearLayoutManager ?: return
+            val heightPx = binding.recyclerQueue.height.takeIf { it > 0 } ?: (400 * resources.displayMetrics.density).toInt()
+            val itemHeightPx = (60 * resources.displayMetrics.density).toInt()
+            val offset = (heightPx - itemHeightPx) / 2
+            layoutManager.scrollToPositionWithOffset(index, offset.coerceAtLeast(0))
+        }
     }
 
     private fun setupFocusScoping() {
@@ -230,9 +243,10 @@ class PlayerActivity : AppCompatActivity() {
         binding.rvLyrics.adapter = lyricsAdapter
 
         queueAdapter = QueueAdapter(queueList, { song ->
-            PlayerController.playSong(song, queueList)
+            PlayerController.playSong(song)
         }, { song ->
-            PlayerController.playNext()
+            PlayerController.insertAsNext(song)
+            Toast.makeText(this, "已设为下一首播放: ${song.title}", Toast.LENGTH_SHORT).show()
         }, { song ->
             PlayerController.removeFromPlaylist(song)
         }, { hintText ->
@@ -255,6 +269,10 @@ class PlayerActivity : AppCompatActivity() {
 
                 val currentQ = SessionManager.getAudioQuality(this)
                 binding.badgeQuality.text = "${currentQ.displayName} 无损"
+                queueAdapter.notifyDataSetChanged()
+                if (isQueueExpanded) {
+                    scrollToCurrentSongCentered()
+                }
             }
         }
 
@@ -280,6 +298,9 @@ class PlayerActivity : AppCompatActivity() {
             queueAdapter.notifyDataSetChanged()
             binding.tvQueueHeader.text = "播放队列 (${list.size}首)"
             binding.btnToggleQueue.text = " 队列 (${list.size}首)"
+            if (isQueueExpanded) {
+                scrollToCurrentSongCentered()
+            }
         }
 
         PlayerController.lyrics.observe(this) { list ->
@@ -302,56 +323,43 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateLyricsPosition(positionMs: Long) {
-        if (lyricsList.isEmpty()) return
-
-        var newActiveIndex = -1
-        for (i in lyricsList.indices) {
-            if (positionMs >= lyricsList[i].timeMs) {
-                newActiveIndex = i
+    private fun updateLyricsPosition(pos: Long) {
+        val list = lyricsList
+        if (list.isEmpty()) return
+        var active = -1
+        for (i in list.indices) {
+            if (pos >= list[i].timeMs) {
+                active = i
             } else {
                 break
             }
         }
-
-        if (newActiveIndex != activeIndex && newActiveIndex >= 0) {
-            val oldIndex = activeIndex
-            activeIndex = newActiveIndex
-
-            if (oldIndex >= 0 && oldIndex < lyricsList.size) {
-                lyricsAdapter.notifyItemChanged(oldIndex)
+        if (active != activeIndex) {
+            activeIndex = active
+            lyricsAdapter.notifyDataSetChanged()
+            if (active >= 0) {
+                val layoutManager = binding.rvLyrics.layoutManager as? LinearLayoutManager ?: return
+                layoutManager.scrollToPositionWithOffset(active, 120)
             }
-            lyricsAdapter.notifyItemChanged(activeIndex)
-
-            val smoothScroller = object : LinearSmoothScroller(this) {
-                override fun getVerticalSnapPreference(): Int = SNAP_TO_START
-                override fun calculateSpeedPerPixel(displayMetrics: DisplayMetrics): Float {
-                    return 100f / displayMetrics.densityDpi
-                }
-            }
-            smoothScroller.targetPosition = activeIndex
-            binding.rvLyrics.layoutManager?.startSmoothScroll(smoothScroller)
         }
     }
 
     private fun loadBlurBackgroundAndPalette(url: String) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val request = ImageRequest.Builder(this@PlayerActivity)
+                val loader = ImageLoader(this@PlayerActivity)
+                val req = ImageRequest.Builder(this@PlayerActivity)
                     .data(url)
                     .allowHardware(false)
                     .build()
+                val result = loader.execute(req).drawable
+                val bitmap = (result as? BitmapDrawable)?.bitmap ?: return@launch
+                val palette = Palette.from(bitmap).generate()
+                val dominantColor = palette.getDominantColor(Color.parseColor("#1E293B"))
 
-                val drawable = ImageLoader(this@PlayerActivity).execute(request).drawable
-                if (drawable is BitmapDrawable) {
-                    val bitmap = drawable.bitmap
-                    val palette = Palette.from(bitmap).generate()
-                    val dominantColor = palette.getDominantColor(Color.parseColor("#0F172A"))
-
-                    withContext(Dispatchers.Main) {
-                        binding.blurBg.load(bitmap)
-                        binding.blurBg.setColorFilter(dominantColor)
-                    }
+                withContext(Dispatchers.Main) {
+                    binding.blurBg.load(bitmap)
+                    binding.blurBg.setColorFilter(dominantColor)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -360,10 +368,10 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun formatTime(ms: Long): String {
-        val totalSeconds = ms / 1000
-        val minutes = totalSeconds / 60
-        val seconds = totalSeconds % 60
-        return "%02d:%02d".format(minutes, seconds)
+        val totalSec = ms / 1000
+        val min = totalSec / 60
+        val sec = totalSec % 60
+        return String.format("%02d:%02d", min, sec)
     }
 
     inner class LyricsAdapter(
@@ -416,6 +424,19 @@ class PlayerActivity : AppCompatActivity() {
             val song = list[position]
             holder.binding.tvQueueTitle.text = song.title
             holder.binding.tvQueueArtist.text = "${song.artist} • ${song.album}"
+
+            val current = PlayerController.currentSong.value
+            val isPlayingThis = current != null && song.id == current.id
+
+            if (isPlayingThis) {
+                holder.binding.tvQueueIndicator.visibility = View.VISIBLE
+                holder.binding.tvQueueTitle.setTextColor(Color.parseColor("#FFA9F06A"))
+                holder.binding.tvQueueArtist.setTextColor(Color.parseColor("#C0FFA9F0"))
+            } else {
+                holder.binding.tvQueueIndicator.visibility = View.GONE
+                holder.binding.tvQueueTitle.setTextColor(Color.parseColor("#F8FAFC"))
+                holder.binding.tvQueueArtist.setTextColor(Color.parseColor("#94A3B8"))
+            }
 
             if (song.coverUrl.isNotEmpty()) {
                 holder.binding.imgQueueCover.load(song.coverUrl)

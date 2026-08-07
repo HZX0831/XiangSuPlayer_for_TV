@@ -17,6 +17,7 @@ import com.cutedino.xiangsuplayer.core.audio.PlayerController
 import com.cutedino.xiangsuplayer.core.focus.DPadFocusHelper
 import com.cutedino.xiangsuplayer.core.model.Playlist
 import com.cutedino.xiangsuplayer.core.model.Song
+import com.cutedino.xiangsuplayer.core.model.toSong
 import com.cutedino.xiangsuplayer.core.source.SoundSourceRepository
 import com.cutedino.xiangsuplayer.databinding.FragmentExploreBinding
 import com.cutedino.xiangsuplayer.databinding.ItemPlaylistCardBinding
@@ -174,14 +175,7 @@ class ExploreFragment : Fragment() {
                 val result = mutableListOf<Song>()
                 for (item in list) {
                     val map = item as? Map<String, Any?> ?: continue
-                    val id = map.ncmLong("id").toString()
-                    val name = map.ncmString("name")
-                    val arList = map.ncmList("ar")
-                    val artist = if (arList.isNotEmpty()) (arList[0] as? Map<String, Any?>)?.ncmString("name") ?: "未知歌手" else "未知歌手"
-                    val alObj = map.ncmObj("al")
-                    val album = alObj.ncmString("name")
-                    val picUrl = alObj.ncmString("picUrl")
-                    result.add(Song(id = id, title = name, artist = artist, album = album, coverUrl = picUrl, durationMs = 0L))
+                    result.add(map.toSong())
                 }
                 result
             } else {

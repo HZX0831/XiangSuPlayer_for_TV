@@ -8,8 +8,10 @@ import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
@@ -56,12 +58,149 @@ class MainActivity : AppCompatActivity() {
         setupFragmentCallbacks()
         setupTopNavFocus()
         setupListeners()
+        setupBackHandler()
         MiniPlayerHelper.setup(this, binding.layoutMiniPlayer)
 
         activeTabButton = binding.navExplore
         switchFragment(exploreFragment)
         updateTabStyle(binding.navExplore)
         updateLoginStatus()
+    }
+
+    private fun setupBackHandler() {
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val focusedView = currentFocus
+                if (focusedView != null && isChildOf(focusedView, binding.contentContainer)) {
+                    (activeTabButton ?: binding.navExplore).requestFocus()
+                    return
+                }
+                if (currentFragment != exploreFragment) {
+                    activeTabButton = binding.navExplore
+                    updateTabStyle(binding.navExplore)
+                    switchFragment(exploreFragment)
+                    binding.navExplore.requestFocus()
+                } else {
+                    showExitConfirmationDialog()
+                }
+            }
+        })
+    }
+
+    private fun showExitConfirmationDialog() {
+        val builder = AlertDialog.Builder(this)
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(24), dpToPx(20), dpToPx(24), dpToPx(20))
+            setBackgroundResource(R.drawable.selector_card_bg)
+        }
+
+        val titleTv = TextView(this).apply {
+            text = "退出像素播放器"
+            textSize = 18f
+            setTextColor(Color.parseColor("#FFA9F06A"))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        }
+
+        val messageTv = TextView(this).apply {
+            text = "确定要退出像素播放器吗？"
+            textSize = 15f
+            setTextColor(Color.parseColor("#E2E8F0"))
+            setPadding(0, dpToPx(12), 0, dpToPx(20))
+        }
+
+        val buttonLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.END
+        }
+
+        val btnConfirm = Button(this).apply {
+            text = "确定退出"
+            textSize = 14f
+            setTextColor(Color.parseColor("#FF6B6B"))
+            setBackgroundResource(R.drawable.selector_card_bg)
+            setPadding(dpToPx(16), dpToPx(8), dpToPx(16), dpToPx(8))
+        }
+
+        val btnCancel = Button(this).apply {
+            text = "取消"
+            textSize = 14f
+            setTextColor(Color.parseColor("#FFA9F06A"))
+            setBackgroundResource(R.drawable.selector_card_bg)
+            setPadding(dpToPx(20), dpToPx(8), dpToPx(20), dpToPx(8))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginEnd = dpToPx(12)
+            }
+        }
+
+        buttonLayout.addView(btnCancel)
+        buttonLayout.addView(btnConfirm)
+
+        container.addView(titleTv)
+        container.addView(messageTv)
+        container.addView(buttonLayout)
+
+        val dialog = builder.setView(container).create()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
+        DPadFocusHelper.setupFocusScale(btnCancel)
+        DPadFocusHelper.setupFocusScale(btnConfirm)
+
+        btnConfirm.setOnClickListener {
+            dialog.dismiss()
+            finish()
+        }
+
+        btnCancel.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        dialog.show()
+
+        btnCancel.post {
+            btnCancel.requestFocus()
+        }
+    }
+
+    private fun switchFragment(fragment: Fragment) {
+        if (currentFragment == fragment && fragment.isAdded) return
+        currentFragment = fragment
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.contentContainer, fragment)
+            .commit()
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_BACK && event?.action == KeyEvent.ACTION_DOWN) {
+            val focusedView = currentFocus
+            if (focusedView != null && isChildOf(focusedView, binding.contentContainer)) {
+                (activeTabButton ?: binding.navExplore).requestFocus()
+                return true
+            }
+            if (currentFragment != exploreFragment) {
+                activeTabButton = binding.navExplore
+                updateTabStyle(binding.navExplore)
+                switchFragment(exploreFragment)
+                binding.navExplore.requestFocus()
+                return true
+            } else {
+                showExitConfirmationDialog()
+                return true
+            }
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    private fun isChildOf(child: View, parent: View): Boolean {
+        var p: Any? = child.parent
+        while (p != null) {
+            if (p == parent) return true
+            p = (p as? View)?.parent
+        }
+        return false
     }
 
     fun updateWallpaperOverlayOpacity(percent: Int = SessionManager.wallpaperOpacityPercent) {
@@ -354,33 +493,5 @@ class MainActivity : AppCompatActivity() {
         } else {
             binding.navLogin.text = if (isFocused) " 网易云登录" else ""
         }
-    }
-
-    private fun switchFragment(fragment: Fragment) {
-        if (currentFragment == fragment && fragment.isAdded) return
-        currentFragment = fragment
-        supportFragmentManager.beginTransaction()
-            .replace(R.id.contentContainer, fragment)
-            .commit()
-    }
-
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_BACK && event?.action == KeyEvent.ACTION_DOWN) {
-            val focusedView = currentFocus
-            if (focusedView != null && isChildOf(focusedView, binding.contentContainer)) {
-                (activeTabButton ?: binding.navExplore).requestFocus()
-                return true
-            }
-        }
-        return super.onKeyDown(keyCode, event)
-    }
-
-    private fun isChildOf(child: View, parent: View): Boolean {
-        var p: Any? = child.parent
-        while (p != null) {
-            if (p == parent) return true
-            p = (p as? View)?.parent
-        }
-        return false
     }
 }

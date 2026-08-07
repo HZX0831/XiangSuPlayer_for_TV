@@ -12,7 +12,7 @@ android {
         applicationId = "com.cutedino.xiangsuplayer"
         minSdk = 21
         targetSdk = 34
-        versionCode = 9
+        versionCode = 10
         versionName = "2.0.0 Preview"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

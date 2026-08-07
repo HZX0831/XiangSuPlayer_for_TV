@@ -223,7 +223,7 @@
                     android:textStyle="bold" />
             </LinearLayout>
 
-            <!-- Panel 2: Sound Source Options -->
+            <!-- Panel 2: Source Options (Multi-select Checkbox + Scrollable) -->
             <LinearLayout
                 android:id="@+id/panelSource"
                 android:layout_width="match_parent"
@@ -234,7 +234,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="核心音源服务选择"
+                    android:text="多并发音源节点配置（勾选多选并发）"
                     android:textColor="@color/tv_text_primary"
                     android:textSize="18sp"
                     android:textStyle="bold" />
@@ -243,31 +243,126 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="设置播放器检索与播放的核心在线音乐服务源"
+                    android:text="所有勾选的音源将在播放歌曲时同时并发竞速解析，自动拦截 30s 试听并优先播放无损全曲。"
                     android:textColor="@color/tv_text_secondary"
                     android:textSize="13sp" />
 
-                <RadioGroup
-                    android:id="@+id/rgSource"
+                <!-- 可滚动的音源列表容器 -->
+                <androidx.core.widget.NestedScrollView
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:orientation="vertical">
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:layout_marginTop="12dp"
+                    android:layout_marginBottom="12dp"
+                    android:fillViewport="true">
 
-                    <RadioButton
-                        android:id="@+id/rbSourceNetease"
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <CheckBox
+                            android:id="@+id/cbSourceNetease"
+                            android:layout_width="wrap_content"
+                            android:layout_height="44dp"
+                            android:checked="true"
+                            android:focusable="true"
+                            android:nextFocusLeft="@+id/btnTabSource"
+                            android:paddingLeft="12dp"
+                            android:paddingRight="12dp"
+                            android:text="🔴 网易云官方原生源 (带 30s 试听自动拦截)"
+                            android:textColor="@color/tv_text_primary"
+                            android:textSize="15sp"
+                            android:textStyle="bold" />
+
+                        <CheckBox
+                            android:id="@+id/cbSourceIkun"
+                            android:layout_width="wrap_content"
+                            android:layout_height="44dp"
+                            android:checked="true"
+                            android:focusable="true"
+                            android:nextFocusLeft="@+id/btnTabSource"
+                            android:paddingLeft="12dp"
+                            android:paddingRight="12dp"
+                            android:text="🐔 ikun SVIP 音源节点"
+                            android:textColor="@color/tv_text_primary"
+                            android:textSize="15sp" />
+
+                        <CheckBox
+                            android:id="@+id/cbSourceXingHai"
+                            android:layout_width="wrap_content"
+                            android:layout_height="44dp"
+                            android:checked="true"
+                            android:focusable="true"
+                            android:nextFocusLeft="@+id/btnTabSource"
+                            android:paddingLeft="12dp"
+                            android:paddingRight="12dp"
+                            android:text="🌌 星海聚合音源节点"
+                            android:textColor="@color/tv_text_primary"
+                            android:textSize="15sp" />
+
+                        <CheckBox
+                            android:id="@+id/cbSourceChangQing"
+                            android:layout_width="wrap_content"
+                            android:layout_height="44dp"
+                            android:checked="true"
+                            android:focusable="true"
+                            android:nextFocusLeft="@+id/btnTabSource"
+                            android:paddingLeft="12dp"
+                            android:paddingRight="12dp"
+                            android:text="🌿 长青 SVIP 音源节点"
+                            android:textColor="@color/tv_text_primary"
+                            android:textSize="15sp" />
+
+                        <CheckBox
+                            android:id="@+id/cbSourceNianXin"
+                            android:layout_width="wrap_content"
+                            android:layout_height="44dp"
+                            android:checked="true"
+                            android:focusable="true"
+                            android:nextFocusLeft="@+id/btnTabSource"
+                            android:paddingLeft="12dp"
+                            android:paddingRight="12dp"
+                            android:text="💖 念心音源节点"
+                            android:textColor="@color/tv_text_primary"
+                            android:textSize="15sp" />
+
+                    </LinearLayout>
+                </androidx.core.widget.NestedScrollView>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/btnSelectAllSources"
                         android:layout_width="wrap_content"
                         android:layout_height="44dp"
-                        android:checked="true"
+                        android:layout_marginRight="12dp"
+                        android:background="@drawable/selector_glass_button"
                         android:focusable="true"
                         android:nextFocusLeft="@+id/btnTabSource"
-                        android:paddingLeft="12dp"
-                        android:paddingRight="12dp"
-                        android:text="网易云音乐"
-                        android:textColor="@color/tv_accent_green"
-                        android:textSize="15sp"
+                        android:paddingLeft="16dp"
+                        android:paddingRight="16dp"
+                        android:text="全选 / 重置音源"
+                        android:textColor="@color/tv_text_primary"
+                        android:textSize="14sp" />
+
+                    <Button
+                        android:id="@+id/btnSaveSourceSettings"
+                        android:layout_width="wrap_content"
+                        android:layout_height="44dp"
+                        android:background="@drawable/selector_glass_button"
+                        android:focusable="true"
+                        android:nextFocusLeft="@+id/btnTabSource"
+                        android:paddingLeft="24dp"
+                        android:paddingRight="24dp"
+                        android:text="保存选中的并发音源"
+                        android:textColor="@color/tv_text_primary"
+                        android:textSize="14sp"
                         android:textStyle="bold" />
-                </RadioGroup>
+                </LinearLayout>
             </LinearLayout>
 
             <!-- Panel 3: Wallpaper Options -->

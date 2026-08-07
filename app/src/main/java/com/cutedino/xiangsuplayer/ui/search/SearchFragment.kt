@@ -163,7 +163,9 @@ class SearchFragment : Fragment() {
             }
 
             btn.setOnClickListener {
+                b.etSearchQuery.requestFocus()
                 b.etSearchQuery.setText(tag)
+                b.etSearchQuery.setSelection(tag.length)
                 performSearch(tag)
             }
             b.layoutHistoryTags.addView(btn)
@@ -189,6 +191,11 @@ class SearchFragment : Fragment() {
                 searchAdapter.notifyDataSetChanged()
                 if (searchResults.isEmpty()) {
                     Toast.makeText(context, "未搜到相关歌曲，请尝试其它关键词", Toast.LENGTH_SHORT).show()
+                    b.etSearchQuery.requestFocus()
+                } else {
+                    b.rvSearchResults.post {
+                        b.rvSearchResults.requestFocus()
+                    }
                 }
             }
         }

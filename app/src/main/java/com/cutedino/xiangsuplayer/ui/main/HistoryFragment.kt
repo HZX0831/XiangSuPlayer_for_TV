@@ -153,20 +153,30 @@ class HistoryFragment : Fragment() {
                 holder.binding.cardCover.load(song.coverUrl)
             }
 
+            holder.itemView.isFocusable = false
+            holder.binding.btnCardPlay.visibility = View.VISIBLE
             holder.binding.btnCardDelete.visibility = View.VISIBLE
+            holder.binding.btnCardPlay.isFocusable = true
+            holder.binding.btnCardDelete.isFocusable = true
+
+            DPadFocusHelper.setupFocusScale(holder.binding.btnCardPlay, 1.15f)
             DPadFocusHelper.setupFocusScale(holder.binding.btnCardDelete, 1.15f)
 
-            DPadFocusHelper.setupFocusScale(holder.itemView, 1.03f)
-            holder.itemView.setOnClickListener { onItemClick(song) }
+            holder.binding.btnCardPlay.setOnClickListener { onItemClick(song) }
             holder.binding.btnCardDelete.setOnClickListener { onItemDelete(song) }
 
-            holder.itemView.setOnKeyListener { _, keyCode, event ->
+            val handleUpKey: (View, Int, KeyEvent) -> Boolean = { _, keyCode, event ->
                 if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_UP && position == 0) {
-                    val b = _binding ?: return@setOnKeyListener false
-                    b.btnPlayAllHistory.requestFocus()
-                    true
+                    val b = _binding
+                    if (b != null) {
+                        b.btnPlayAllHistory.requestFocus()
+                        true
+                    } else false
                 } else false
             }
+
+            holder.binding.btnCardPlay.setOnKeyListener(handleUpKey)
+            holder.binding.btnCardDelete.setOnKeyListener(handleUpKey)
         }
 
         override fun getItemCount(): Int = list.size

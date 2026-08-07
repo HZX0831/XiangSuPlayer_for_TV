@@ -10,6 +10,7 @@ class App : Application() {
         super.onCreate()
         SessionManager.init(this)
         NcmApi.install(this)
+        com.cutedino.xiangsuplayer.core.source.SoundSourceRepository.enabledSourceIds = SessionManager.enabledSoundSources
         PlayerController.init(this)
     }
 }

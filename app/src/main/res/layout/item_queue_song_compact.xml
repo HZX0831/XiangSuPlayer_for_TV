@@ -8,7 +8,19 @@
     android:orientation="horizontal"
     android:padding="8dp">
 
-    <!-- Left: Album Cover -->
+    <!-- Left: Active Indicator & Album Cover -->
+    <TextView
+        android:id="@+id/tvQueueIndicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="4dp"
+        android:layout_marginEnd="6dp"
+        android:text="☑"
+        android:textColor="@color/tv_accent_green"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
     <ImageView
         android:id="@+id/imgQueueCover"
         android:layout_width="44dp"
