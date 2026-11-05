@@ -1,497 +1,274 @@
 package com.cutedino.xiangsuplayer.ui.main
 
 import android.content.Intent
-import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
-import android.view.KeyEvent
-import android.view.LayoutInflater
-import android.view.View
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.OnBackPressedCallback
-import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
-import androidx.fragment.app.Fragment
-import androidx.lifecycle.lifecycleScope
-import coil.load
-import com.cutedino.xiangsuplayer.R
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import com.cutedino.xiangsuplayer.core.audio.PlayMode
 import com.cutedino.xiangsuplayer.core.audio.PlayerController
-import com.cutedino.xiangsuplayer.core.focus.DPadFocusHelper
+import com.cutedino.xiangsuplayer.core.model.Playlist
+import com.cutedino.xiangsuplayer.data.auth.MultiPlatformAccountManager
 import com.cutedino.xiangsuplayer.data.session.SessionManager
-import com.cutedino.xiangsuplayer.databinding.ActivityMainBinding
-import com.cutedino.xiangsuplayer.ui.auth.QRLoginDialogFragment
-import com.cutedino.xiangsuplayer.ui.explore.ExploreFragment
-import com.cutedino.xiangsuplayer.ui.library.LibraryFragment
+import com.cutedino.xiangsuplayer.ui.components.TvFloatingMiniPlayer
+import com.cutedino.xiangsuplayer.ui.components.TvImmersiveBackdrop
+import com.cutedino.xiangsuplayer.ui.components.TvMainTab
+import com.cutedino.xiangsuplayer.ui.components.TvTopPillNavigationBar
+import com.cutedino.xiangsuplayer.ui.library.PlaylistDetailActivity
 import com.cutedino.xiangsuplayer.ui.player.PlayerActivity
-import com.cutedino.xiangsuplayer.ui.search.SearchFragment
-import com.cutedino.xiangsuplayer.ui.settings.SettingsFragment
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import net.moriafly.ncm.NcmApi
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
+import com.cutedino.xiangsuplayer.ui.theme.PixelPlayLightPurple
+import com.cutedino.xiangsuplayer.ui.theme.PixelPlayPurpleDark
+import com.cutedino.xiangsuplayer.ui.theme.PixelPlayRed
+import com.cutedino.xiangsuplayer.ui.theme.PixelPlaySurface
+import com.cutedino.xiangsuplayer.ui.theme.PixelPlayTvTheme
+import com.cutedino.xiangsuplayer.ui.theme.tvPillFocusable
 
-class MainActivity : AppCompatActivity() {
-
-    private lateinit var binding: ActivityMainBinding
-    private val exploreFragment = ExploreFragment()
-    private val searchFragment = SearchFragment()
-    private val libraryFragment = LibraryFragment()
-    private val historyFragment = HistoryFragment()
-    private val settingsFragment = SettingsFragment()
-
-    private var activeTabButton: Button? = null
-    private var currentFragment: Fragment? = null
+class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-
-        loadWallpaper()
-        updateWallpaperOverlayOpacity()
-        setupFragmentCallbacks()
-        setupTopNavFocus()
-        setupListeners()
-        setupBackHandler()
-        MiniPlayerHelper.setup(this, binding.layoutMiniPlayer)
-
-        activeTabButton = binding.navExplore
-        switchFragment(exploreFragment)
-        updateTabStyle(binding.navExplore)
-        updateLoginStatus()
-    }
-
-    private fun setupBackHandler() {
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                val focusedView = currentFocus
-                if (focusedView != null && isChildOf(focusedView, binding.contentContainer)) {
-                    (activeTabButton ?: binding.navExplore).requestFocus()
-                    return
-                }
-                if (currentFragment != exploreFragment) {
-                    activeTabButton = binding.navExplore
-                    updateTabStyle(binding.navExplore)
-                    switchFragment(exploreFragment)
-                    binding.navExplore.requestFocus()
-                } else {
-                    showExitConfirmationDialog()
-                }
-            }
-        })
-    }
-
-    private fun showExitConfirmationDialog() {
-        val builder = AlertDialog.Builder(this)
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dpToPx(24), dpToPx(20), dpToPx(24), dpToPx(20))
-            setBackgroundResource(R.drawable.selector_card_bg)
-        }
-
-        val titleTv = TextView(this).apply {
-            text = "退出像素播放器"
-            textSize = 18f
-            setTextColor(Color.parseColor("#FFA9F06A"))
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-        }
-
-        val messageTv = TextView(this).apply {
-            text = "确定要退出像素播放器吗？"
-            textSize = 15f
-            setTextColor(Color.parseColor("#E2E8F0"))
-            setPadding(0, dpToPx(12), 0, dpToPx(20))
-        }
-
-        val buttonLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.END
-        }
-
-        val btnConfirm = Button(this).apply {
-            text = "确定退出"
-            textSize = 14f
-            setTextColor(Color.parseColor("#FF6B6B"))
-            setBackgroundResource(R.drawable.selector_card_bg)
-            setPadding(dpToPx(16), dpToPx(8), dpToPx(16), dpToPx(8))
-        }
-
-        val btnCancel = Button(this).apply {
-            text = "取消"
-            textSize = 14f
-            setTextColor(Color.parseColor("#FFA9F06A"))
-            setBackgroundResource(R.drawable.selector_card_bg)
-            setPadding(dpToPx(20), dpToPx(8), dpToPx(20), dpToPx(8))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                marginEnd = dpToPx(12)
+        setContent {
+            val currentSong by PlayerController.currentSong.observeAsState()
+            PixelPlayTvTheme(coverUrl = currentSong?.coverUrl) {
+                TvMainAppScreen(
+                    onOpenPlayer = {
+                        if (PlayerController.currentSong.value != null) {
+                            startActivity(Intent(this, PlayerActivity::class.java))
+                        } else {
+                            Toast.makeText(this, "当前暂无正在播放的歌曲，先点首歌吧", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    onOpenPlaylist = { playlist ->
+                        val intent = Intent(this, PlaylistDetailActivity::class.java).apply {
+                            putExtra("EXTRA_PLAYLIST_ID", playlist.id)
+                            putExtra("EXTRA_PLAYLIST_NAME", playlist.name)
+                            putExtra("EXTRA_PLAYLIST_COVER", playlist.coverUrl)
+                            putExtra("EXTRA_PLAYLIST_SOURCE", playlist.source)
+                        }
+                        startActivity(intent)
+                    },
+                    onExitApp = { finish() }
+                )
             }
         }
+    }
 
-        buttonLayout.addView(btnCancel)
-        buttonLayout.addView(btnConfirm)
+    fun loadWallpaper() {}
+    fun updateWallpaperOverlayOpacity(percent: Int = SessionManager.wallpaperOpacityPercent) {}
+}
 
-        container.addView(titleTv)
-        container.addView(messageTv)
-        container.addView(buttonLayout)
+@Composable
+private fun TvMainAppScreen(
+    onOpenPlayer: () -> Unit,
+    onOpenPlaylist: (Playlist) -> Unit,
+    onExitApp: () -> Unit
+) {
+    val currentSong by PlayerController.currentSong.observeAsState()
+    val isPlaying by PlayerController.isPlaying.observeAsState(false)
+    val playMode by PlayerController.playMode.observeAsState(PlayMode.SEQUENCE)
+    val pos by PlayerController.currentPosition.collectAsState()
+    val dur by PlayerController.duration.collectAsState()
+    val streamResult by PlayerController.activeStreamResult.collectAsState()
 
-        val dialog = builder.setView(container).create()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+    var selectedTab by remember { mutableStateOf(TvMainTab.EXPLORE) }
+    var showAccountModal by remember { mutableStateOf(false) }
+    var showExitModal by remember { mutableStateOf(false) }
+    var accountRefreshTick by remember { mutableIntStateOf(0) }
+    var themeRefreshTick by remember { mutableIntStateOf(0) }
 
-        DPadFocusHelper.setupFocusScale(btnCancel)
-        DPadFocusHelper.setupFocusScale(btnConfirm)
+    val accountSummary = remember(accountRefreshTick) {
+        MultiPlatformAccountManager.getAccountSummaryText()
+    }
 
-        btnConfirm.setOnClickListener {
-            dialog.dismiss()
-            finish()
-        }
+    val useWallpaper = remember(themeRefreshTick) { SessionManager.useWallpaperBackground }
+    val wallpaperUrl = remember(themeRefreshTick) { SessionManager.customWallpaperUrl }
+    val wallpaperOpacity = remember(themeRefreshTick) { SessionManager.wallpaperOpacityPercent }
 
-        btnCancel.setOnClickListener {
-            dialog.dismiss()
-        }
-
-        dialog.show()
-
-        btnCancel.post {
-            btnCancel.requestFocus()
+    BackHandler {
+        if (selectedTab != TvMainTab.EXPLORE) {
+            selectedTab = TvMainTab.EXPLORE
+        } else {
+            showExitModal = true
         }
     }
 
-    private fun switchFragment(fragment: Fragment) {
-        if (currentFragment == fragment && fragment.isAdded) return
-        currentFragment = fragment
-        supportFragmentManager.beginTransaction()
-            .replace(R.id.contentContainer, fragment)
-            .commit()
-    }
+    val progress = if (dur > 0L) (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f) else 0f
 
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_BACK && event?.action == KeyEvent.ACTION_DOWN) {
-            val focusedView = currentFocus
-            if (focusedView != null && isChildOf(focusedView, binding.contentContainer)) {
-                (activeTabButton ?: binding.navExplore).requestFocus()
-                return true
-            }
-            if (currentFragment != exploreFragment) {
-                activeTabButton = binding.navExplore
-                updateTabStyle(binding.navExplore)
-                switchFragment(exploreFragment)
-                binding.navExplore.requestFocus()
-                return true
-            } else {
-                showExitConfirmationDialog()
-                return true
-            }
-        }
-        return super.onKeyDown(keyCode, event)
-    }
+    Box(modifier = Modifier.fillMaxSize()) {
+        // 1. 全局沉浸式动态流体背景 (或必应/自定义壁纸)
+        TvImmersiveBackdrop(
+            coverUrl = currentSong?.coverUrl,
+            useWallpaper = useWallpaper,
+            wallpaperUrl = wallpaperUrl,
+            wallpaperOpacityPercent = wallpaperOpacity
+        )
 
-    private fun isChildOf(child: View, parent: View): Boolean {
-        var p: Any? = child.parent
-        while (p != null) {
-            if (p == parent) return true
-            p = (p as? View)?.parent
-        }
-        return false
-    }
+        // 2. 主界面纵向布局：顶部胶囊导航栏 + 中部内容视图 + 底部悬浮胶囊 MiniPlayer
+        Column(modifier = Modifier.fillMaxSize()) {
+            TvTopPillNavigationBar(
+                selectedTab = selectedTab,
+                onSelectTab = { selectedTab = it },
+                onOpenPlayer = onOpenPlayer,
+                onOpenAccounts = { showAccountModal = true },
+                accountSummary = accountSummary
+            )
 
-    fun updateWallpaperOverlayOpacity(percent: Int = SessionManager.wallpaperOpacityPercent) {
-        val alpha = (percent / 100.0f).coerceIn(0.0f, 0.95f)
-        binding.wallpaperOverlay.alpha = alpha
-    }
-
-    fun loadWallpaper() {
-        val customUrl = SessionManager.getWallpaperUrl(this)
-        if (!customUrl.isNullOrBlank()) {
-            binding.ivBingWallpaper.load(customUrl) {
-                crossfade(true)
-                placeholder(R.drawable.bg_default_wallpaper)
-                error(R.drawable.bg_default_wallpaper)
-            }
-            return
-        }
-
-        binding.ivBingWallpaper.setImageResource(R.drawable.bg_default_wallpaper)
-
-        val primaryBingUrl = "https://bing.biturl.top/?resolution=1920&format=image&index=0&mkt=zh-CN"
-        binding.ivBingWallpaper.load(primaryBingUrl) {
-            crossfade(true)
-            placeholder(R.drawable.bg_default_wallpaper)
-            error(R.drawable.bg_default_wallpaper)
-            listener(
-                onError = { _, _ ->
-                    val secondaryBingUrl = "https://api.vvhan.com/api/bing"
-                    binding.ivBingWallpaper.load(secondaryBingUrl) {
-                        crossfade(true)
-                        placeholder(R.drawable.bg_default_wallpaper)
-                        error(R.drawable.bg_default_wallpaper)
-                        listener(
-                            onError = { _, _ ->
-                                fetchBingJsonWallpaper()
-                            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                Crossfade(
+                    targetState = selectedTab,
+                    animationSpec = tween(durationMillis = 220),
+                    label = "mainTabCrossfade"
+                ) { tab ->
+                    when (tab) {
+                        TvMainTab.EXPLORE -> TvExploreScreen(
+                            onOpenPlaylist = onOpenPlaylist,
+                            onOpenPlayer = onOpenPlayer
+                        )
+                        TvMainTab.TOPLIST -> TvToplistScreen()
+                        TvMainTab.SEARCH -> TvSearchScreen(
+                            onOpenPlaylist = onOpenPlaylist
+                        )
+                        TvMainTab.LIBRARY -> TvLibraryScreen(
+                            onOpenPlaylist = onOpenPlaylist,
+                            onOpenAccountModal = { showAccountModal = true }
+                        )
+                        TvMainTab.SOURCE_MARKET -> TvSourceMarketScreen()
+                        TvMainTab.HISTORY -> TvHistoryScreen()
+                        TvMainTab.SETTINGS -> TvSettingsScreen(
+                            onThemeModeChanged = { themeRefreshTick++ }
                         )
                     }
                 }
+            }
+
+            TvFloatingMiniPlayer(
+                currentSong = currentSong,
+                isPlaying = isPlaying,
+                playMode = playMode,
+                progress = progress,
+                streamResult = streamResult,
+                onTogglePlayPause = { PlayerController.togglePlayPause() },
+                onPlayNext = { PlayerController.playNext() },
+                onPlayPrev = { PlayerController.playPrevious() },
+                onTogglePlayMode = { PlayerController.togglePlayMode() },
+                onOpenFullPlayer = onOpenPlayer
             )
         }
-    }
 
-    private fun fetchBingJsonWallpaper() {
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val url = URL("https://bing.biturl.top/?resolution=UHD&format=json&index=0&mkt=zh-CN")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 5000
-                conn.readTimeout = 5000
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+        // 3. 多平台账号中心弹窗
+        if (showAccountModal) {
+            TvMultiAccountDialog(
+                onAccountChanged = { accountRefreshTick++ },
+                onDismiss = { showAccountModal = false }
+            )
+        }
 
-                val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
-                val jsonObj = JSONObject(jsonStr)
-                val imgUrl = jsonObj.optString("url")
-                if (imgUrl.isNotBlank()) {
-                    withContext(Dispatchers.Main) {
-                        binding.ivBingWallpaper.load(imgUrl) {
-                            crossfade(true)
+        // 4. 退出确认弹窗
+        if (showExitModal) {
+            Dialog(onDismissRequest = { showExitModal = false }) {
+                Surface(
+                    modifier = Modifier
+                        .width(420.dp)
+                        .clip(RoundedCornerShape(24.dp)),
+                    color = PixelPlaySurface,
+                    border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.16f))
+                ) {
+                    Column(modifier = Modifier.padding(26.dp)) {
+                        Text(
+                            text = "退出像素播放器 TV",
+                            color = Color.White,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "确定要退出像素播放器吗？",
+                            color = PixelPlayLightPurple,
+                            fontSize = 14.sp
+                        )
+                        Spacer(modifier = Modifier.height(22.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            var cancelFocused by remember { mutableStateOf(false) }
+                            Box(
+                                modifier = Modifier
+                                    .tvPillFocusable(
+                                        isSelected = true,
+                                        onFocusChanged = { cancelFocused = it },
+                                        onClick = { showExitModal = false }
+                                    )
+                                    .padding(horizontal = 20.dp, vertical = 9.dp)
+                            ) {
+                                Text(
+                                    text = "继续听歌",
+                                    color = if (cancelFocused) PixelPlayPurpleDark else Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            var exitFocused by remember { mutableStateOf(false) }
+                            Box(
+                                modifier = Modifier
+                                    .tvPillFocusable(
+                                        onFocusChanged = { exitFocused = it },
+                                        onClick = {
+                                            showExitModal = false
+                                            onExitApp()
+                                        }
+                                    )
+                                    .padding(horizontal = 18.dp, vertical = 9.dp)
+                            ) {
+                                Text(
+                                    text = "确定退出",
+                                    color = if (exitFocused) PixelPlayPurpleDark else PixelPlayRed,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
-                    return@launch
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-
-            try {
-                val url = URL("https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=zh-CN")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 5000
-                conn.readTimeout = 5000
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-
-                val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
-                val jsonObj = JSONObject(jsonStr)
-                val imagesArray = jsonObj.optJSONArray("images")
-                if (imagesArray != null && imagesArray.length() > 0) {
-                    val imgObj = imagesArray.getJSONObject(0)
-                    val relUrl = imgObj.optString("url")
-                    val fullUrl = if (relUrl.startsWith("http")) relUrl else "https://cn.bing.com$relUrl"
-
-                    withContext(Dispatchers.Main) {
-                        binding.ivBingWallpaper.load(fullUrl) {
-                            crossfade(true)
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-
-    private fun setupFragmentCallbacks() {
-        exploreFragment.onReturnToTopNav = { binding.navExplore.requestFocus() }
-        searchFragment.onReturnToTopNav = { binding.navSearch.requestFocus() }
-        libraryFragment.onReturnToTopNav = { binding.navLibrary.requestFocus() }
-        historyFragment.onReturnToTopNav = { binding.navHistory.requestFocus() }
-        settingsFragment.onReturnToTopNav = { binding.navSettings.requestFocus() }
-    }
-
-    private fun setupTopNavFocus() {
-        DPadFocusHelper.setupFocusScale(binding.navExplore) { _, hasFocus ->
-            if (hasFocus) {
-                activeTabButton = binding.navExplore
-                updateTabStyle(binding.navExplore)
-                switchFragment(exploreFragment)
-            }
-        }
-
-        DPadFocusHelper.setupFocusScale(binding.navSearch) { _, hasFocus ->
-            if (hasFocus) {
-                activeTabButton = binding.navSearch
-                updateTabStyle(binding.navSearch)
-                switchFragment(searchFragment)
-            }
-        }
-
-        DPadFocusHelper.setupFocusScale(binding.navLibrary) { _, hasFocus ->
-            if (hasFocus) {
-                activeTabButton = binding.navLibrary
-                updateTabStyle(binding.navLibrary)
-                switchFragment(libraryFragment)
-            }
-        }
-
-        DPadFocusHelper.setupFocusScale(binding.navPlayer) { _, hasFocus ->
-            binding.navPlayer.text = if (hasFocus) " 播放界面" else ""
-            binding.navPlayer.setPadding(if (hasFocus) dpToPx(12) else dpToPx(8), 0, if (hasFocus) dpToPx(12) else dpToPx(8), 0)
-        }
-
-        DPadFocusHelper.setupFocusScale(binding.navHistory) { _, hasFocus ->
-            binding.navHistory.text = if (hasFocus) " 播放历史" else ""
-            binding.navHistory.setPadding(if (hasFocus) dpToPx(12) else dpToPx(8), 0, if (hasFocus) dpToPx(12) else dpToPx(8), 0)
-        }
-
-        DPadFocusHelper.setupFocusScale(binding.navLogin) { _, hasFocus ->
-            updateLoginStatus(hasFocus)
-            binding.navLogin.setPadding(if (hasFocus) dpToPx(12) else dpToPx(8), 0, if (hasFocus) dpToPx(12) else dpToPx(8), 0)
-        }
-
-        DPadFocusHelper.setupFocusScale(binding.navSettings) { _, hasFocus ->
-            binding.navSettings.text = if (hasFocus) " 设置" else ""
-            binding.navSettings.setPadding(if (hasFocus) dpToPx(12) else dpToPx(8), 0, if (hasFocus) dpToPx(12) else dpToPx(8), 0)
-        }
-    }
-
-    private fun dpToPx(dp: Int): Int {
-        return (dp * resources.displayMetrics.density).toInt()
-    }
-
-    private fun setupListeners() {
-        binding.navExplore.setOnKeyListener { _, keyCode, event ->
-            if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                exploreFragment.focusFirst()
-                true
-            } else false
-        }
-
-        binding.navSearch.setOnKeyListener { _, keyCode, event ->
-            if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                searchFragment.focusSearchInput()
-                true
-            } else false
-        }
-
-        binding.navLibrary.setOnKeyListener { _, keyCode, event ->
-            if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                libraryFragment.focusFirst()
-                true
-            } else false
-        }
-
-        binding.navHistory.setOnKeyListener { _, keyCode, event ->
-            if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                historyFragment.focusFirst()
-                true
-            } else false
-        }
-
-        binding.navPlayer.setOnClickListener {
-            val currentSong = PlayerController.currentSong.value
-            if (currentSong != null) {
-                val intent = Intent(this, PlayerActivity::class.java)
-                startActivity(intent)
-            } else {
-                Toast.makeText(this, "当前暂无正在播放的歌曲", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        binding.navHistory.setOnClickListener {
-            activeTabButton = binding.navHistory
-            updateTabStyle(binding.navHistory)
-            switchFragment(historyFragment)
-            historyFragment.loadHistory()
-        }
-
-        binding.navLogin.setOnClickListener {
-            if (NcmApi.isLogin) {
-                showCustomAccountDialog()
-            } else {
-                val dialog = QRLoginDialogFragment()
-                dialog.onLoginSuccess = {
-                    updateLoginStatus()
-                    exploreFragment.loadRecommendations()
-                    libraryFragment.refreshNeteasePlaylists()
-                }
-                dialog.show(supportFragmentManager, "QRLoginDialog")
-            }
-        }
-
-        binding.navSettings.setOnClickListener {
-            activeTabButton = binding.navSettings
-            updateTabStyle(binding.navSettings)
-            switchFragment(settingsFragment)
-        }
-    }
-
-    private fun showCustomAccountDialog() {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_account_info, null)
-        val dialog = AlertDialog.Builder(this)
-            .setView(dialogView)
-            .create()
-
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-
-        val tvNick = dialogView.findViewById<TextView>(R.id.tvDialogNick)
-        val tvUid = dialogView.findViewById<TextView>(R.id.tvDialogUid)
-        val btnLogout = dialogView.findViewById<Button>(R.id.btnDialogLogout)
-        val btnClose = dialogView.findViewById<Button>(R.id.btnDialogClose)
-
-        tvNick.text = NcmApi.nickname.ifBlank { "网易云用户" }
-        val uid = NcmApi.userId
-        tvUid.text = "UID: ${if (uid > 0) uid else "未知"}"
-
-        if (btnClose != null) DPadFocusHelper.setupFocusScale(btnClose)
-        if (btnLogout != null) DPadFocusHelper.setupFocusScale(btnLogout)
-
-        var canLogout = false
-        dialogView.postDelayed({ canLogout = true }, 400)
-
-        btnLogout?.setOnClickListener {
-            if (!canLogout) return@setOnClickListener
-            lifecycleScope.launch {
-                NcmApi.logout()
-                updateLoginStatus()
-                exploreFragment.loadRecommendations()
-                libraryFragment.refreshNeteasePlaylists()
-                Toast.makeText(this@MainActivity, "已成功退出网易云账号", Toast.LENGTH_SHORT).show()
-                dialog.dismiss()
-            }
-        }
-
-        btnClose?.setOnClickListener {
-            dialog.dismiss()
-        }
-
-        dialog.show()
-
-        btnClose?.post {
-            btnClose.requestFocus()
-        }
-    }
-
-    private fun updateTabStyle(selectedButton: Button) {
-        val tabs = listOf(binding.navExplore, binding.navSearch, binding.navLibrary, binding.navHistory, binding.navSettings)
-        for (tab in tabs) {
-            if (tab == selectedButton) {
-                tab.setTextColor(Color.parseColor("#FFA9F06A"))
-            } else {
-                tab.setTextColor(Color.parseColor("#94A3B8"))
-            }
-        }
-    }
-
-    private fun updateLoginStatus(isFocused: Boolean = binding.navLogin.hasFocus()) {
-        if (NcmApi.isLogin) {
-            val cachedNick = NcmApi.nickname
-            binding.navLogin.text = if (isFocused) " ${cachedNick.ifBlank { "已登录" }}" else ""
-
-            lifecycleScope.launch {
-                val accRes = NcmApi.fetchAndSaveAccountInfo()
-                val nick = accRes.getOrNull()?.second
-                val currentFocus = binding.navLogin.hasFocus()
-                if (!nick.isNullOrBlank()) {
-                    binding.navLogin.text = if (currentFocus) " $nick" else ""
                 }
             }
-        } else {
-            binding.navLogin.text = if (isFocused) " 网易云登录" else ""
         }
     }
 }

@@ -12,8 +12,8 @@ android {
         applicationId = "com.cutedino.xiangsuplayer"
         minSdk = 21
         targetSdk = 34
-        versionCode = 10
-        versionName = "2.0.0 Preview"
+        versionCode = 11
+        versionName = "2.1.0 PixelPlay TV"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -39,7 +39,11 @@ android {
     }
     buildFeatures {
         viewBinding = true
+        compose = true
         buildConfig = true
+    }
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.14"
     }
 }
 
@@ -57,6 +61,23 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+    implementation("androidx.media:media:1.7.0")
+
+    // Jetpack Compose & Material 3 Expressive for TV
+    val composeBom = platform("androidx.compose:compose-bom:2024.06.00")
+    implementation(composeBom)
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-graphics")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-core")
+    implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.activity:activity-compose:1.9.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
+    implementation("androidx.compose.runtime:runtime-livedata")
+    implementation("androidx.navigation:navigation-compose:2.7.7")
 
     // Leanback for TV
     implementation("androidx.leanback:leanback:1.0.0")
@@ -73,6 +94,7 @@ dependencies {
     // Network & Image
     implementation("com.squareup.okhttp3:okhttp:3.14.9")
     implementation("io.coil-kt:coil:2.5.0")
+    implementation("io.coil-kt:coil-compose:2.5.0")
     implementation("com.google.zxing:core:3.5.3")
 
     // Coroutines

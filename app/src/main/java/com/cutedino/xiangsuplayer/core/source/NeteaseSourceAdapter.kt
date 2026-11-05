@@ -79,6 +79,8 @@ class NeteaseSourceAdapter : ISoundSourceAdapter {
         val map = res.getOrNull() ?: return@runCatching emptyList()
         val lrcObj = map.ncmObj("lrc")
         val lrcText = lrcObj.ncmString("lyric")
-        com.cutedino.xiangsuplayer.core.audio.LyricEngine.parse(lrcText)
+        val tlyricObj = map.ncmObj("tlyric")
+        val tlyricText = tlyricObj.ncmString("lyric")
+        com.cutedino.xiangsuplayer.core.audio.LyricEngine.parse(lrcText, tlyricText)
     }
 }

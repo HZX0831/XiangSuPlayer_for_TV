@@ -73,6 +73,14 @@ MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDgtQn2JZ34ZC28NWYpAUd98iZ37BUrX/aKzmFbt7cl
         return runCatching { NcmJson.parseAny(json) }.getOrNull()
     }
 
+    fun eapiReqDecrypt(encryptedHex: String): Pair<String, Any?>? {
+        val raw = aesEcbDecryptFromHex(encryptedHex, EAPI_KEY)
+        val match = Regex("""(.*?)-36cd479b6b5-(.*?)-36cd479b6b5-(.*)""").find(raw) ?: return null
+        val (_, url, data) = match.groupValues
+        val parsed = runCatching { NcmJson.parseAny(data) }.getOrNull() ?: data
+        return url to parsed
+    }
+
     data class WeapiResult(val params: String, val encSecKey: String) {
         fun toFormBody(): String = "params=${uenc(params)}&encSecKey=${uenc(encSecKey)}"
     }

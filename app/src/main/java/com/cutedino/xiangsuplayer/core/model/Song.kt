@@ -11,7 +11,11 @@ data class Song(
     val artist: String,
     val album: String,
     val coverUrl: String = "",
-    val durationMs: Long = 0L
+    val durationMs: Long = 0L,
+    val source: String = "wy",
+    val songmid: String = "",
+    val hash: String = "",
+    val isFavorite: Boolean = false
 )
 
 @Suppress("UNCHECKED_CAST")

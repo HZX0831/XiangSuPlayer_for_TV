@@ -2,5 +2,6 @@ package com.cutedino.xiangsuplayer.core.model
 
 data class LyricLine(
     val timeMs: Long,
-    val text: String
+    val text: String,
+    val translation: String? = null
 )

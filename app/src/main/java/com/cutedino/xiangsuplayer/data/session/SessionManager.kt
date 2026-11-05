@@ -42,9 +42,17 @@ object SessionManager {
 
     var enabledSoundSources: Set<String>
         get() {
-            if (!::prefs.isInitialized) return setOf("netease_native", "ikun", "xinghai", "changqing", "nianxin")
+            val defaults = setOf(
+                "netease_native",
+                "builtin_cross_platform",
+                "ikun",
+                "xinghai",
+                "changqing",
+                "nianxin"
+            )
+            if (!::prefs.isInitialized) return defaults
             val raw = prefs.getString("enabled_sound_sources", null)
-            if (raw.isNullOrBlank()) return setOf("netease_native", "ikun", "xinghai", "changqing", "nianxin")
+            if (raw.isNullOrBlank()) return defaults
             return raw.split(",").filter { it.isNotBlank() }.toSet()
         }
         set(value) {
@@ -52,6 +60,11 @@ object SessionManager {
                 prefs.edit().putString("enabled_sound_sources", value.joinToString(",")).apply()
             }
         }
+
+    // 默认使用主项目 PixelPlay 深蓝紫流体主题 (false)，用户可在设置中开启必应/自定义壁纸 (true)
+    var useWallpaperBackground: Boolean
+        get() = if (::prefs.isInitialized) prefs.getBoolean("use_wallpaper_bg", false) else false
+        set(value) { if (::prefs.isInitialized) prefs.edit().putBoolean("use_wallpaper_bg", value).apply() }
 
     var customWallpaperUrl: String?
         get() = if (::prefs.isInitialized) prefs.getString("custom_wallpaper_url", null) else null
@@ -67,12 +80,36 @@ object SessionManager {
         customWallpaperUrl = if (url.isNullOrBlank()) null else url.trim()
     }
 
-    // Wallpaper Overlay Opacity Percentage (0% transparent to 90% dark)
     var wallpaperOpacityPercent: Int
-        get() = if (::prefs.isInitialized) prefs.getInt("wallpaper_opacity_percent", 50) else 50
+        get() = if (::prefs.isInitialized) prefs.getInt("wallpaper_opacity_percent", 55) else 55
         set(value) { if (::prefs.isInitialized) prefs.edit().putInt("wallpaper_opacity_percent", value).apply() }
 
-    // Search History Storage
+    // ── 多平台账号持久化 (QQ音乐 / 酷狗音乐) ──
+    var qqMusicUin: String
+        get() = if (::prefs.isInitialized) prefs.getString("qq_music_uin", "") ?: "" else ""
+        set(value) { if (::prefs.isInitialized) prefs.edit().putString("qq_music_uin", value.trim()).apply() }
+
+    var qqMusicNickname: String
+        get() = if (::prefs.isInitialized) prefs.getString("qq_music_nick", "") ?: "" else ""
+        set(value) { if (::prefs.isInitialized) prefs.edit().putString("qq_music_nick", value.trim()).apply() }
+
+    var qqMusicCookie: String
+        get() = if (::prefs.isInitialized) prefs.getString("qq_music_cookie", "") ?: "" else ""
+        set(value) { if (::prefs.isInitialized) prefs.edit().putString("qq_music_cookie", value.trim()).apply() }
+
+    var kugouUserId: String
+        get() = if (::prefs.isInitialized) prefs.getString("kugou_userid", "") ?: "" else ""
+        set(value) { if (::prefs.isInitialized) prefs.edit().putString("kugou_userid", value.trim()).apply() }
+
+    var kugouNickname: String
+        get() = if (::prefs.isInitialized) prefs.getString("kugou_nick", "") ?: "" else ""
+        set(value) { if (::prefs.isInitialized) prefs.edit().putString("kugou_nick", value.trim()).apply() }
+
+    var kugouToken: String
+        get() = if (::prefs.isInitialized) prefs.getString("kugou_token", "") ?: "" else ""
+        set(value) { if (::prefs.isInitialized) prefs.edit().putString("kugou_token", value.trim()).apply() }
+
+    // ── 搜索历史持久化 ──
     fun getSearchHistory(context: Context): List<String> {
         if (!::prefs.isInitialized) init(context)
         val raw = prefs.getString("search_history", "") ?: ""
@@ -87,7 +124,7 @@ object SessionManager {
         val current = getSearchHistory(context).toMutableList()
         current.remove(trimmed)
         current.add(0, trimmed)
-        if (current.size > 10) {
+        if (current.size > 12) {
             current.removeAt(current.size - 1)
         }
         prefs.edit().putString("search_history", current.joinToString("|||")).apply()

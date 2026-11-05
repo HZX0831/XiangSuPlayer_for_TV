@@ -57,6 +57,7 @@ object MiniPlayerHelper {
                 PlayMode.SEQUENCE -> R.drawable.ic_mode_seq_line
                 PlayMode.SHUFFLE -> R.drawable.ic_mode_shuffle_line
                 PlayMode.REPEAT_ONE -> R.drawable.ic_mode_repeat_line
+                PlayMode.HEART_MODE -> R.drawable.ic_mode_seq_line
             }
             binding.btnMiniPlayMode.setCompoundDrawablesWithIntrinsicBounds(modeIconRes, 0, 0, 0)
         }
