@@ -1,0 +1,30 @@
+Gradle 8.13 / JDK 21 / Android SDK Platform 36
+Tasks: :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :ncmapi:testDebugUnitTest :app:lintDebug :ncmapi:lintDebug
+BUILD SUCCESSFUL in 2m 7s
+
+app com.cutedino.xiangsuplayer.core.audio.LyricEngineTest | 3 tests, 0 skipped, 0 failures, 0 errors
+app com.cutedino.xiangsuplayer.core.audio.PlaybackSnapshotStoreTest | 2 tests, 0 skipped, 0 failures, 0 errors
+app com.cutedino.xiangsuplayer.core.library.WebDavClientTest | 5 tests, 0 skipped, 0 failures, 0 errors
+app com.cutedino.xiangsuplayer.core.phone.PhoneInputServerTest | 4 tests, 0 skipped, 0 failures, 0 errors
+app com.cutedino.xiangsuplayer.core.source.ResolutionTest | 4 tests, 0 skipped, 0 failures, 0 errors
+app com.cutedino.xiangsuplayer.core.source.SourceBackendRegressionTest | 3 tests, 0 skipped, 0 failures, 0 errors
+app com.cutedino.xiangsuplayer.core.source.SourceEnablementTest | 4 tests, 0 skipped, 0 failures, 0 errors
+app com.cutedino.xiangsuplayer.core.source.SourceIndexRecoveryTest | 3 tests, 0 skipped, 0 failures, 0 errors
+app com.cutedino.xiangsuplayer.data.auth.CommentTrackIdentityTest | 1 tests, 0 skipped, 0 failures, 0 errors
+app com.cutedino.xiangsuplayer.data.db.AppDatabaseMigrationTest | 3 tests, 0 skipped, 0 failures, 0 errors
+app com.cutedino.xiangsuplayer.data.db.RepositoryWritesTest | 2 tests, 0 skipped, 0 failures, 0 errors
+ncmapi net.moriafly.ncm.NcmBackendRegressionTest | 5 tests, 0 skipped, 0 failures, 0 errors
+ncmapi net.moriafly.ncm.NcmEndpointTest | 3 tests, 0 skipped, 0 failures, 0 errors
+
+app lint: 0 errors, 44 warnings
+ncmapi lint: 0 errors, 5 warnings
+
+Android TV emulator API 36, com.cutedino.xiangsuplayer.backendreview
+com.cutedino.xiangsuplayer.BackendRuntimeTest:.
+
+Time: 0.016
+
+OK (1 test)
+
+APK manifest: compile SDK 36, min SDK 21, target SDK 34; zero Activity declarations.
+Original source/config SHA-256: 67 of 67 unchanged.

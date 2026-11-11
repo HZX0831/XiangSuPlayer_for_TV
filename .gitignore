@@ -1,0 +1,20 @@
+# Gradle & Build
+.gradle/
+.kotlin/
+**/build/
+build/
+app/release/
+
+# IDE Configuration
+.idea/
+*.iml
+.DS_Store
+
+# Local properties & Logs
+local.properties
+*.log
+.artifacts/
+decompiled_output/
+
+# Local build tools and caches
+.tooling/

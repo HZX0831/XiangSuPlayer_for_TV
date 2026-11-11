@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">175.27.166.236</domain>
+        <domain includeSubdomains="false">music.nxinxz.com</domain>
+        <domain includeSubdomains="false">search.kuwo.cn</domain>
+        <domain includeSubdomains="false">antiserver.kuwo.cn</domain>
+        <domain includeSubdomains="false">m.kuwo.cn</domain>
+        <domain includeSubdomains="false">lyrics.kugou.com</domain>
+        <domain includeSubdomains="false">mobilecdnbj.kugou.com</domain>
+    </domain-config>
+</network-security-config>
