@@ -28,8 +28,21 @@
 - `.gitignore` 验证：`banked-*`、旧嵌套工程、工具缓存、签名配置和密钥均被忽略。
 - 发布候选文本扫描未发现匹配的私钥、GitHub Token 或长 MUSIC_U 凭据。
 
-Debug APK：`app/build/outputs/apk/debug/app-debug.apk`，27,647,471 字节。
+图标修正前的 Debug APK：`app/build/outputs/apk/debug/app-debug.apk`，27,647,471 字节。
 
 SHA-256：`457ff6078f40d17b81769920565559f37ffb57d6c7372e65de937f102e4424c3`。
 
-正式版签名、main 推送、分支清理和 GitHub prerelease 在 README 审阅后继续；此处不预先标记完成。
+## 正式签名包
+
+- 安装包：`XiangSuPlayer-TV-v2.1.0-preview.apk`，18,144,488 字节。
+- SHA-256：`435072291ecb73a150c13630c9ab81781cb043efe0a9e7b0e75893736229fe10`。
+- 版本：`2.1.0 preview`，versionCode 12；应用 ID 不变。
+- v1／v2／v3 签名与 16KB ZIP 对齐验证通过，证书与维护者提供的正式包一致。密钥和密码仅保存在本机忽略目录。
+- 发布证书 SHA-256：`ed17550e15c76c640adc41ebf2c0cc44337b7451ea81ba6e5abfe1c0672150fa`。
+- 该证书与 `2.0.0_Preview_with_vss` 不同，无法直接覆盖旧版；README 与发布说明已注明卸载的数据影响。
+
+桌面名称改为“像素播放器 TV”；五份完全相同、误用 `.webp` 后缀的 PNG 合并为一份，补齐原生自适应与单色图标。原绿色标志未改绘。最终 Lint 零错误、图标警告为零；app 总警告由 662 降至 655，ncmapi 仍为 5。
+
+API 36 专用只读 TV 模拟器中，先安装维护者提供的签名包，再以 `install -r` 成功覆盖为图标修正版。系统应用列表确认图标与名称正常，应用信息确认版本正确；正式包启动后，用下、确定从首页打开搜索。截图、签名记录和构建日志见 [正式包证据](design/implementation/v2.1.0-preview/release-verification.json)。这不等同于旧 2.0 证书的覆盖升级验证。
+
+README 已确认，main 已推送，两个多余分支已清理；旧 WIP 历史保留于 `archive/tv-redesign-wip-v2.1.0-preview`。CI 曾因安装已下线的 Android `tools` 包失败，改为 `platform-tools` 后[通过](https://github.com/HZX0831/XiangSuPlayer_for_TV/actions/runs/42984191529)。发布入口为 [v2.1.0-preview](https://github.com/HZX0831/XiangSuPlayer_for_TV/releases/tag/v2.1.0-preview)。

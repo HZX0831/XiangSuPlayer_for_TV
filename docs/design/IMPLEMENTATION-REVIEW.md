@@ -1,6 +1,18 @@
 # TV 根工程迁移与前端验收
 
-最新结果见本文「v2.1.0 preview 发布前复验」；迁移与前端重构结果按阶段保留。
+最新结果见本文「正式签名包与图标检查」；发布前复验、迁移与前端重构结果按阶段保留。
+
+## 正式签名包与图标检查
+
+安装包统一命名为 `XiangSuPlayer-TV-v2.1.0-preview.apk`，本机位于 `app/release/`，发布附件使用同名。大小 18,144,488 字节，SHA-256 为 `435072291ecb73a150c13630c9ab81781cb043efe0a9e7b0e75893736229fe10`。v1／v2／v3 签名和 16KB ZIP 对齐验证通过。
+
+桌面名称去掉旧版号，图标合并重复 PNG、更正后缀并提供自适应与单色资源。最终 Lint 为 app 零错误、655 警告，ncmapi 零错误、5 警告；没有图标相关警告。此次仅修改资源与文档，48 项 JVM 和此前设备矩阵的业务回归范围保持不变。
+
+在 API 36、960×540dp、字号 1.0 的独立只读模拟器中，图标修正版成功覆盖维护者提供的同证书正式包；启动后按下、确定打开搜索。系统应用列表中的图标和名称、应用信息中的版本均已目视检查。
+
+[系统图标](implementation/v2.1.0-preview/release-launcher.png) · [名称与版本](implementation/v2.1.0-preview/release-app-info.png) · [正式包首页](implementation/v2.1.0-preview/release-home.png) · [D-pad 搜索入口](implementation/v2.1.0-preview/release-search.png) · [构建日志](implementation/v2.1.0-preview/release-build.log) · [验证数据](implementation/v2.1.0-preview/release-verification.json)
+
+新证书与旧 `2.0.0_Preview_with_vss` 不同，该旧版不能直接覆盖升级；卸载会清除本地数据。签名信息和安装边界见 [发布前检查](../RELEASE-REVIEW-v2.1.0-preview.md)。
 
 ## v2.1.0 preview 发布前复验
 

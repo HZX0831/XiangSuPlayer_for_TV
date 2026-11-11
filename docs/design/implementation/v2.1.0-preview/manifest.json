@@ -65,6 +65,46 @@
     "sha256": "37a28d210cdda312fe7d5da29ee7b481418dd25d5bb35323024e90fa96d51fcd"
   },
   {
+    "name": "release-app-info.png",
+    "size": 338940,
+    "sha256": "9a10e451835efb78b51372be7ebdf082a6ccb150427560b90e10031c986500d1"
+  },
+  {
+    "name": "release-app-info.xml",
+    "size": 15254,
+    "sha256": "a4cbddaae9f4020efa5c8730102411f3011261a89e416ce5b468cfe7159b5eb2"
+  },
+  {
+    "name": "release-apps.xml",
+    "size": 14115,
+    "sha256": "b672a8e47a37d532152b6227e321fab98d7b98eb755930b88c95b2369704fa43"
+  },
+  {
+    "name": "release-build.log",
+    "size": 12283,
+    "sha256": "010670f0eda82280154631cc745d77c3e8c390624f1471bf4d72a4428e4f4340"
+  },
+  {
+    "name": "release-home.png",
+    "size": 103150,
+    "sha256": "fbf53993394f20615058685c8928e9d4cf30804734a280050f819ce7260a034f"
+  },
+  {
+    "name": "release-launcher.png",
+    "size": 117620,
+    "sha256": "6bd19bbe2f71ea75fed10da7bd052edadd2f4ac525349e3fe7dee2a7e5b5aca4"
+  },
+  {
+    "name": "release-search.png",
+    "size": 92185,
+    "sha256": "79f5de5c1855c5eafde37ecc6779740641461e65fea5c2a5ddc081f4f050ae76"
+  },
+  {
+    "name": "release-verification.json",
+    "size": 1119,
+    "sha256": "4a9d5127e4dfa211019646f9fe56beb86283591aae1544b7c21de2fc3a5f4bb0"
+  },
+  {
     "name": "settings-about-preview-compact.png",
     "size": 106321,
     "sha256": "740b5c6d26432d40233920c1a53e0873e2bfab2d8d735d683d427207ffd73351"
@@ -123,6 +163,16 @@
     "name": "settings-playback-preview-standard.png",
     "size": 130946,
     "sha256": "addb2fbb355c1a84a4f396febd0192bf33db89488f737d67fe1bbd61e9e079d2"
+  },
+  {
+    "name": "SHA256SUMS.txt",
+    "size": 102,
+    "sha256": "45766f82621e73ffec2478989e56cc991c78e9165cb51b638c3d74e78b583275"
+  },
+  {
+    "name": "signature-verification.txt",
+    "size": 20053,
+    "sha256": "f6f2518207deffe6cb84414c842c006b61f7d025d78a43b2adeeaabe0915215c"
   },
   {
     "name": "toplist-rows-preview-standard.png",

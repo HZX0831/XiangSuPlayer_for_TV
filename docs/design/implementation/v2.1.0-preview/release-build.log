@@ -1,0 +1,223 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.13/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon JVM discovery is an incubating feature.
+Daemon will be stopped at the end of the build 
+Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preReleaseBuild UP-TO-DATE
+> Task :app:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :ncmapi:preBuild UP-TO-DATE
+> Task :ncmapi:preReleaseBuild UP-TO-DATE
+> Task :ncmapi:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :ncmapi:mergeReleaseNativeLibs NO-SOURCE
+> Task :ncmapi:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :app:mergeReleaseNativeLibs NO-SOURCE
+> Task :app:stripReleaseDebugSymbols NO-SOURCE
+> Task :app:extractReleaseNativeSymbolTables NO-SOURCE
+> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :ncmapi:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :ncmapi:generateReleaseResValues UP-TO-DATE
+> Task :ncmapi:generateReleaseResources UP-TO-DATE
+> Task :ncmapi:packageReleaseResources UP-TO-DATE
+> Task :ncmapi:parseReleaseLocalResources UP-TO-DATE
+> Task :ncmapi:generateReleaseRFile UP-TO-DATE
+> Task :ncmapi:compileReleaseKotlin UP-TO-DATE
+> Task :ncmapi:javaPreCompileRelease UP-TO-DATE
+> Task :ncmapi:compileReleaseJavaWithJavac NO-SOURCE
+> Task :ncmapi:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :app:checkReleaseDuplicateClasses UP-TO-DATE
+> Task :app:buildKotlinToolingMetadata UP-TO-DATE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:generateReleaseBuildConfig UP-TO-DATE
+> Task :ncmapi:writeReleaseAarMetadata UP-TO-DATE
+> Task :app:checkReleaseAarMetadata UP-TO-DATE
+> Task :app:generateReleaseResValues UP-TO-DATE
+> Task :app:mapReleaseSourceSetPaths
+> Task :app:generateReleaseResources
+> Task :app:packageReleaseResources
+> Task :app:createReleaseCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksRelease UP-TO-DATE
+> Task :ncmapi:extractDeepLinksRelease UP-TO-DATE
+> Task :ncmapi:processReleaseManifest UP-TO-DATE
+> Task :app:processReleaseMainManifest UP-TO-DATE
+> Task :app:processReleaseManifest UP-TO-DATE
+> Task :app:processReleaseManifestForPackage UP-TO-DATE
+> Task :ncmapi:compileReleaseLibraryResources UP-TO-DATE
+> Task :app:parseReleaseLocalResources
+> Task :ncmapi:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :app:mergeReleaseResources
+> Task :app:javaPreCompileRelease UP-TO-DATE
+> Task :app:desugarReleaseFileDependencies UP-TO-DATE
+> Task :app:mergeReleaseStartupProfile UP-TO-DATE
+> Task :app:mergeExtDexRelease UP-TO-DATE
+> Task :ncmapi:prepareReleaseArtProfile UP-TO-DATE
+> Task :app:mergeReleaseArtProfile UP-TO-DATE
+> Task :app:mergeReleaseShaders UP-TO-DATE
+> Task :app:compileReleaseShaders NO-SOURCE
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :ncmapi:mergeReleaseShaders UP-TO-DATE
+> Task :ncmapi:compileReleaseShaders NO-SOURCE
+> Task :ncmapi:generateReleaseAssets UP-TO-DATE
+> Task :ncmapi:mergeReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseAssets UP-TO-DATE
+> Task :app:compressReleaseAssets UP-TO-DATE
+> Task :app:extractReleaseVersionControlInfo UP-TO-DATE
+> Task :app:extractProguardFiles UP-TO-DATE
+> Task :ncmapi:processReleaseJavaRes UP-TO-DATE
+> Task :ncmapi:createFullJarRelease UP-TO-DATE
+> Task :ncmapi:extractProguardFiles UP-TO-DATE
+> Task :ncmapi:generateReleaseLintModel UP-TO-DATE
+> Task :ncmapi:prepareLintJarForPublish UP-TO-DATE
+> Task :ncmapi:stripReleaseDebugSymbols NO-SOURCE
+> Task :ncmapi:copyReleaseJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :ncmapi:extractDeepLinksForAarRelease UP-TO-DATE
+> Task :ncmapi:extractReleaseAnnotations UP-TO-DATE
+> Task :ncmapi:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :ncmapi:mergeReleaseConsumerProguardFiles UP-TO-DATE
+> Task :ncmapi:mergeReleaseJavaResource UP-TO-DATE
+> Task :ncmapi:syncReleaseLibJars UP-TO-DATE
+> Task :ncmapi:bundleReleaseLocalLintAar UP-TO-DATE
+> Task :ncmapi:lintVitalAnalyzeRelease UP-TO-DATE
+> Task :ncmapi:writeReleaseLintModelMetadata UP-TO-DATE
+> Task :ncmapi:generateReleaseLintVitalModel UP-TO-DATE
+> Task :app:collectReleaseDependencies UP-TO-DATE
+> Task :app:sdkReleaseDependencyData UP-TO-DATE
+> Task :app:writeReleaseAppMetadata UP-TO-DATE
+> Task :app:writeReleaseSigningConfigVersions UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:generateDebugBuildConfig UP-TO-DATE
+> Task :ncmapi:preDebugBuild UP-TO-DATE
+> Task :ncmapi:writeDebugAarMetadata UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :ncmapi:generateDebugResValues UP-TO-DATE
+> Task :ncmapi:generateDebugResources UP-TO-DATE
+> Task :ncmapi:packageDebugResources UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths
+> Task :app:generateDebugResources
+> Task :app:packageDebugResources
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :ncmapi:extractDeepLinksDebug UP-TO-DATE
+> Task :ncmapi:processDebugManifest UP-TO-DATE
+> Task :app:parseDebugLocalResources
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :ncmapi:compileDebugLibraryResources UP-TO-DATE
+> Task :ncmapi:parseDebugLocalResources UP-TO-DATE
+> Task :ncmapi:generateDebugRFile UP-TO-DATE
+> Task :ncmapi:compileDebugKotlin UP-TO-DATE
+> Task :ncmapi:javaPreCompileDebug UP-TO-DATE
+> Task :ncmapi:compileDebugJavaWithJavac NO-SOURCE
+> Task :ncmapi:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :app:mergeDebugShaders UP-TO-DATE
+> Task :app:compileDebugShaders NO-SOURCE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :ncmapi:mergeDebugShaders UP-TO-DATE
+> Task :ncmapi:compileDebugShaders NO-SOURCE
+> Task :ncmapi:generateDebugAssets UP-TO-DATE
+> Task :ncmapi:mergeDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets UP-TO-DATE
+> Task :app:compressDebugAssets UP-TO-DATE
+> Task :ncmapi:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :app:desugarDebugFileDependencies UP-TO-DATE
+> Task :ncmapi:processDebugJavaRes UP-TO-DATE
+> Task :app:checkDebugDuplicateClasses UP-TO-DATE
+> Task :app:mergeExtDexDebug UP-TO-DATE
+> Task :app:mergeLibDexDebug UP-TO-DATE
+> Task :app:mergeDebugJniLibFolders UP-TO-DATE
+> Task :ncmapi:mergeDebugJniLibFolders UP-TO-DATE
+> Task :ncmapi:mergeDebugNativeLibs NO-SOURCE
+> Task :ncmapi:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :app:mergeDebugNativeLibs NO-SOURCE
+> Task :app:stripDebugDebugSymbols NO-SOURCE
+> Task :app:validateSigningDebug UP-TO-DATE
+> Task :app:writeDebugAppMetadata UP-TO-DATE
+> Task :app:writeDebugSigningConfigVersions UP-TO-DATE
+> Task :ncmapi:stripDebugDebugSymbols NO-SOURCE
+> Task :ncmapi:copyDebugJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :ncmapi:extractDebugAnnotations UP-TO-DATE
+> Task :ncmapi:extractDeepLinksForAarDebug UP-TO-DATE
+> Task :ncmapi:mergeDebugGeneratedProguardFiles UP-TO-DATE
+> Task :ncmapi:mergeDebugConsumerProguardFiles UP-TO-DATE
+> Task :ncmapi:prepareDebugArtProfile UP-TO-DATE
+> Task :ncmapi:mergeDebugJavaResource UP-TO-DATE
+> Task :ncmapi:syncDebugLibJars UP-TO-DATE
+> Task :ncmapi:bundleDebugLocalLintAar UP-TO-DATE
+> Task :app:preDebugAndroidTestBuild SKIPPED
+> Task :app:generateDebugAndroidTestResValues UP-TO-DATE
+> Task :ncmapi:createFullJarDebug UP-TO-DATE
+> Task :ncmapi:writeDebugLintModelMetadata UP-TO-DATE
+> Task :ncmapi:generateDebugLintModel UP-TO-DATE
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :ncmapi:lintAnalyzeDebug UP-TO-DATE
+> Task :ncmapi:preDebugAndroidTestBuild UP-TO-DATE
+> Task :ncmapi:generateDebugAndroidTestResValues UP-TO-DATE
+> Task :ncmapi:generateDebugAndroidTestLintModel UP-TO-DATE
+> Task :ncmapi:preDebugUnitTestBuild UP-TO-DATE
+> Task :ncmapi:generateDebugUnitTestLintModel UP-TO-DATE
+> Task :ncmapi:lintAnalyzeDebugAndroidTest UP-TO-DATE
+> Task :ncmapi:lintAnalyzeDebugUnitTest UP-TO-DATE
+> Task :app:mergeDebugResources
+> Task :app:processReleaseResources
+> Task :app:optimizeReleaseResources
+> Task :app:processDebugResources
+> Task :app:kspReleaseKotlin
+> Task :app:kspDebugKotlin
+> Task :app:compileReleaseKotlin
+> Task :app:compileDebugKotlin
+w: file:///G:/PixelPlayer/app/src/main/java/com/cutedino/xiangsuplayer/core/phone/PhoneInputServer.kt:249:39 'val activeNetworkInfo: NetworkInfo?' is deprecated. Deprecated in Java.
+w: file:///G:/PixelPlayer/app/src/main/java/com/cutedino/xiangsuplayer/core/phone/PhoneInputServer.kt:249:70 'val isConnected: Boolean' is deprecated. Deprecated in Java.
+w: file:///G:/PixelPlayer/app/src/main/java/com/cutedino/xiangsuplayer/core/phone/PhoneInputServer.kt:250:25 'val type: Int' is deprecated. Deprecated in Java.
+w: file:///G:/PixelPlayer/app/src/main/java/com/cutedino/xiangsuplayer/ui/main/TvSecondaryScreens.kt:179:44 Unchecked cast of 'Any?' to 'Map<String, Any?>'.
+w: file:///G:/PixelPlayer/app/src/main/java/com/cutedino/xiangsuplayer/ui/main/TvSecondaryScreens.kt:201:44 Unchecked cast of 'Any?' to 'Map<String, Any?>'.
+w: file:///G:/PixelPlayer/app/src/main/java/com/cutedino/xiangsuplayer/ui/player/PlayerActivity.kt:497:30 'val Icons.Rounded.QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Rounded.QueueMusic.
+
+> Task :app:compileReleaseKotlin
+w: file:///G:/PixelPlayer/app/src/main/java/com/cutedino/xiangsuplayer/core/phone/PhoneInputServer.kt:249:39 'val activeNetworkInfo: NetworkInfo?' is deprecated. Deprecated in Java.
+w: file:///G:/PixelPlayer/app/src/main/java/com/cutedino/xiangsuplayer/core/phone/PhoneInputServer.kt:249:70 'val isConnected: Boolean' is deprecated. Deprecated in Java.
+w: file:///G:/PixelPlayer/app/src/main/java/com/cutedino/xiangsuplayer/core/phone/PhoneInputServer.kt:250:25 'val type: Int' is deprecated. Deprecated in Java.
+w: file:///G:/PixelPlayer/app/src/main/java/com/cutedino/xiangsuplayer/ui/main/TvSecondaryScreens.kt:179:44 Unchecked cast of 'Any?' to 'Map<String, Any?>'.
+w: file:///G:/PixelPlayer/app/src/main/java/com/cutedino/xiangsuplayer/ui/main/TvSecondaryScreens.kt:201:44 Unchecked cast of 'Any?' to 'Map<String, Any?>'.
+w: file:///G:/PixelPlayer/app/src/main/java/com/cutedino/xiangsuplayer/ui/player/PlayerActivity.kt:497:30 'val Icons.Rounded.QueueMusic: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Rounded.QueueMusic.
+
+> Task :app:compileReleaseJavaWithJavac UP-TO-DATE
+> Task :app:dexBuilderRelease
+> Task :app:mergeReleaseGlobalSynthetics UP-TO-DATE
+> Task :app:generateReleaseLintVitalReportModel
+> Task :app:processReleaseJavaRes UP-TO-DATE
+> Task :app:mergeReleaseJavaResource UP-TO-DATE
+> Task :app:compileDebugJavaWithJavac UP-TO-DATE
+> Task :app:dexBuilderDebug
+> Task :app:mergeDebugGlobalSynthetics UP-TO-DATE
+> Task :app:processDebugJavaRes UP-TO-DATE
+> Task :app:mergeDebugJavaResource UP-TO-DATE
+> Task :app:generateDebugLintReportModel
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:generateDebugAndroidTestLintModel
+> Task :app:generateDebugUnitTestLintModel
+> Task :app:mergeProjectDexDebug
+> Task :app:packageDebug
+> Task :app:createDebugApkListingFileRedirect UP-TO-DATE
+> Task :app:assembleDebug
+> Task :app:lintAnalyzeDebugAndroidTest
+> Task :app:mergeDexRelease
+> Task :app:lintAnalyzeDebugUnitTest
+> Task :app:compileReleaseArtProfile
+> Task :app:lintVitalAnalyzeRelease
+> Task :app:lintVitalReportRelease
+> Task :app:lintVitalRelease
+> Task :app:packageRelease
+> Task :app:createReleaseApkListingFileRedirect UP-TO-DATE
+> Task :app:assembleRelease
+> Task :app:lintAnalyzeDebug
+
+> Task :app:lintReportDebug
+Wrote HTML report to file:///G:/PixelPlayer/app/build/reports/lint-results-debug.html
+
+> Task :app:lintDebug
+
+BUILD SUCCESSFUL in 1m 38s
+163 actionable tasks: 37 executed, 126 up-to-date

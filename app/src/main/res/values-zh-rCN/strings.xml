@@ -146,7 +146,7 @@
     <string name="tv_playlist_retry_missing">重试缺失曲目</string>
     <string name="tv_progress_adjust">调整播放进度</string>
     <string name="tv_progress">播放进度</string>
-    <string name="app_name">像素播放器 TV 2.0</string>
+    <string name="app_name">像素播放器 TV</string>
     <string name="exo_controls_custom_playback_speed">%1$.2f 倍</string>
     <string name="tab_explore">推荐 / 歌单</string>
     <string name="tab_library">我的库</string>

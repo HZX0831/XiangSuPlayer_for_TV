@@ -1,0 +1,40 @@
+{
+  "file": "XiangSuPlayer-TV-v2.1.0-preview.apk",
+  "size": 18144488,
+  "sha256": "435072291ecb73a150c13630c9ab81781cb043efe0a9e7b0e75893736229fe10",
+  "applicationId": "com.cutedino.xiangsuplayer",
+  "versionName": "2.1.0 preview",
+  "versionCode": 12,
+  "certificateSha256": "ed17550e15c76c640adc41ebf2c0cc44337b7451ea81ba6e5abfe1c0672150fa",
+  "signatureSchemes": {
+    "v1": true,
+    "v2": true,
+    "v3": true
+  },
+  "zipAlignment": "4-byte and 16KB page",
+  "lint": {
+    "app": {
+      "errors": 0,
+      "warnings": 655
+    },
+    "ncmapi": {
+      "errors": 0,
+      "warnings": 5
+    }
+  },
+  "device": {
+    "api": 36,
+    "logicalCanvas": "960x540dp",
+    "fontScale": 1,
+    "readOnly": true,
+    "port": 5556,
+    "checks": [
+      "same-certificate install -r succeeded over maintainer APK",
+      "system app list icon and app label verified",
+      "system app info version verified",
+      "release MainActivity launch succeeded",
+      "D-pad DOWN and OK opened Search"
+    ]
+  },
+  "upgradeFromOldPreview": "2.0.0_Preview_with_vss has a different certificate; direct replacement is unsupported"
+}
