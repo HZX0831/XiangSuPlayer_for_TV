@@ -7,6 +7,7 @@
 - [PRODUCT.md](PRODUCT.md)：已确认产品与业务边界。
 - [DESIGN.md](DESIGN.md)：当前品牌设计系统与页面/交互规范。
 - [Android 品牌研究](docs/design/ANDROID-BRAND-STUDY.md)：固定提交的 22 个源码文件、四张截图与三方向评估。
+- [原生截图和验收记录](docs/design/IMPLEMENTATION-REVIEW.md)：构建、焦点操作、大字号与验证边界。
 - [第一轮方案存档](docs/design/DESIGN-PROPOSALS.md)：初次探索，已由当前 DESIGN.md 取代实施权威。
 
 ## 构建和验证

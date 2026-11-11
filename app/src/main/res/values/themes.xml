@@ -1,1 +1,9 @@
-<resources><style name="Theme.PixelPlayerTv" parent="android:style/Theme.Material.NoActionBar"><item name="android:fontFamily">sans</item><item name="android:windowFullscreen">true</item><item name="android:windowActionModeOverlay">true</item><item name="android:windowBackground">#0F1827</item><item name="android:colorAccent">#B8D4F5</item><item name="android:windowLightStatusBar">false</item></style></resources>
+<resources>
+    <style name="Theme.PixelPlayerTv" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">#0F1827</item>
+        <item name="android:colorAccent">#B8D4F5</item>
+    </style>
+</resources>

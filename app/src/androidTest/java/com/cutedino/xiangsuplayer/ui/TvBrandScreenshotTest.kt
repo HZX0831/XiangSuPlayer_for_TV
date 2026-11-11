@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.os.SystemClock
+import android.view.KeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
@@ -97,7 +98,13 @@ class TvBrandScreenshotTest {
                 }
             }
         }
-        rule.onNode(hasText("暂停") and hasClickAction()).performSemanticsAction(SemanticsActions.RequestFocus)
+        val pause = rule.onNode(hasText("暂停") and hasClickAction())
+        pause.performSemanticsAction(SemanticsActions.RequestFocus)
+        pause.assertIsFocused()
+        repeat(2) { instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_RIGHT) }
+        rule.onNode(hasText("队列") and hasClickAction()).assertIsFocused()
+        repeat(2) { instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_LEFT) }
+        pause.assertIsFocused()
         capture("player-lyrics")
     }
     @Test fun toplistUsesReadableRowsWithLongTitles() {
@@ -118,7 +125,9 @@ class TvBrandScreenshotTest {
                 }
             }
         }
-        rule.waitForIdle()
+        rule.onNode(hasText("飙升榜") and hasClickAction()).performSemanticsAction(SemanticsActions.RequestFocus)
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER)
+        rule.onNodeWithText("沿海公路：在很长的夜里慢慢回家").assertIsDisplayed()
         capture("toplist-rows")
     }
 

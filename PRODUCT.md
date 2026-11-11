@@ -69,8 +69,8 @@ android
 - 本目录 README.md、VERIFICATION.md、app/src/main/AndroidManifest.xml、app/build.gradle.kts：独立后端边界与技术约束。
 - 本目录 core/audio/PlayerController.kt、PlaybackEngine.kt、core/source、core/library、core/phone、data/auth、data/db、ncmapi：可用契约、错误与状态。
 - 原仓库 app/src/main/java/com/cutedino/xiangsuplayer/ui：12 个 Kotlin 文件，作为现有页面/焦点/操作清单证据，路径明细见 docs/design/REPOSITORY-AUDIT.md。
-- 未发现专用视觉回归 golden 或应用截图夹具；原资源中的框架图标不作为界面截图。方案图属于设计概念，不是设备运行截图。
-- VERIFICATION.md 中的构建、42 个 JVM 用例、Lint 与一个 API 36 设备测试是之前的后端交付记录；本轮未重新执行，也不把它作为新界面验收。
+- 原工程未发现专用视觉回归 golden。第一轮方案图属于设计概念；第二轮新增的原生截图与验证见 [IMPLEMENTATION-REVIEW.md](docs/design/IMPLEMENTATION-REVIEW.md)。
+- VERIFICATION.md 中的构建、42 个 JVM 用例、Lint 与一个 API 36 设备测试是之前的后端交付记录；该记录不作为新界面验收。
 
 ## Product Principles
 
@@ -82,4 +82,4 @@ android
 
 ## Accessibility & Inclusion
 
-所有操作提供方向键路径和可见焦点；焦点、已选择、正在播放不能只靠颜色区分。正文用 sp 并验证系统大字号；保留读屏语义、长文本可读路径与减少动画回退。二维码是补充路径，电视端输入与控制必须独立可用。具体字号、对比度与安全区的候选规格见设计方案，仍需真机远距离验收。
+所有操作提供方向键路径和可见焦点；焦点、已选择、正在播放不能只靠颜色区分。正文用 sp 并验证系统大字号；保留读屏语义、长文本可读路径与减少动画回退。二维码是补充路径，电视端输入与控制必须独立可用。当前字号、对比度与安全区规范见 [DESIGN.md](DESIGN.md)；仍需真机远距离验收。

@@ -1,6 +1,6 @@
 # 当前实施入口
 
-第二轮已研究 Android 主项目并接入 TV 前端。当前规范见 [DESIGN.md](../../DESIGN.md)，研究见 [ANDROID-BRAND-STUDY.md](ANDROID-BRAND-STUDY.md)。本目录下第一轮方案与核验保留为历史，不能代替当前原生实现及验证记录。
+第二轮已研究 Android 主项目并接入 TV 前端。当前规范见 [DESIGN.md](../../DESIGN.md)，研究见 [ANDROID-BRAND-STUDY.md](ANDROID-BRAND-STUDY.md)，原生截图与验证结果见 [IMPLEMENTATION-REVIEW.md](IMPLEMENTATION-REVIEW.md)。本目录下第一轮方案与核验保留为历史，不能代替当前原生实现及验证记录。
 
 # 第一轮方案存档
 

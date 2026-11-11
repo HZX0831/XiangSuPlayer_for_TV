@@ -67,7 +67,7 @@ fun Modifier.tvPillFocusable(
     LaunchedEffect(focused) { onFocusChanged?.invoke(focused) }
     val fill by animateColorAsState(when { focused -> scheme.primary; isSelected -> scheme.surfaceVariant; else -> Color.Transparent },
         tween(duration), label = "actionFocusTone")
-    val outline by animateColorAsState(when { focused -> scheme.primary; isSelected -> scheme.outline; else -> Color.Transparent },
+    val outline by animateColorAsState(if (focused) scheme.primary else Color.Transparent,
         tween(duration), label = "actionFocusOutline")
     return this.tvFocusTarget(focusKey).heightIn(min = 48.dp).clip(shape).background(fill, shape)
         .border(2.dp, outline, shape).clickable(interactionSource = source, indication = null, onClick = onClick)

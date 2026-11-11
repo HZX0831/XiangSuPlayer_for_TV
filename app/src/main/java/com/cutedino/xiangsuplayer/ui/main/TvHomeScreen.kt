@@ -60,10 +60,10 @@ internal fun TvHomeContent(song: Song?, playing: Boolean, history: List<Song>, o
                     }
                     Spacer(Modifier.height(6.dp))
                     Text(stringResource(R.string.tv_home_recent), style = MaterialTheme.typography.titleSmall, color = scheme.onSurfaceVariant)
-                    val recent = history.filter { it.key != song?.key }.take(2)
-                    if (recent.isEmpty()) Text(stringResource(R.string.tv_home_no_recent), style = MaterialTheme.typography.bodySmall,
+                    val recent = history.firstOrNull { it.key != song?.key }
+                    if (recent == null) Text(stringResource(R.string.tv_home_no_recent), style = MaterialTheme.typography.bodySmall,
                         color = scheme.onSurfaceVariant)
-                    recent.forEach { item ->
+                    recent?.let { item ->
                         Row(Modifier.fillMaxWidth().tvFocusableCard(focusKey = "home/recent/" + item.key.sourceId + "/" + item.id,
                             onClick = { onPlaySong(item) }).padding(horizontal = 8.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

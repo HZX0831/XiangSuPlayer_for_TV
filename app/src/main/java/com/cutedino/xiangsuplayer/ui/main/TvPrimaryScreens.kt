@@ -586,7 +586,7 @@ fun TvToplistScreen(
     }
 
     BoxWithConstraints(modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 6.dp)) {
-        val compact = maxWidth < 760.dp
+        val compact = maxWidth < 648.dp
         BackHandler(enabled = compact && compactDetail) {
             compactDetail = false
             restoreBoard = true
