@@ -1,5 +1,31 @@
 package com.cutedino.xiangsuplayer.ui.components
 
+import androidx.compose.runtime.CompositionLocalProvider
+import com.cutedino.xiangsuplayer.ui.theme.LocalTvFocusMemory
+
+import androidx.compose.ui.text.style.TextDecoration
+
+
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.LaunchedEffect
+import com.cutedino.xiangsuplayer.ui.theme.LocalTvMotionScale
+import com.cutedino.xiangsuplayer.ui.theme.rememberTvWindowSpec
+import androidx.compose.foundation.layout.widthIn
+
+import com.cutedino.xiangsuplayer.R
+import androidx.compose.ui.res.stringResource
+import androidx.compose.runtime.key
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import android.view.KeyEvent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
@@ -13,7 +39,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -22,6 +47,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,23 +57,21 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.Extension
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Leaderboard
-import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Repeat
-import androidx.compose.material.icons.filled.RepeatOne
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Shuffle
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.rounded.Explore
+import androidx.compose.material.icons.rounded.Extension
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Leaderboard
+import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.RepeatOne
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -70,6 +94,13 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -98,106 +129,37 @@ import kotlin.math.PI
 import kotlin.math.sin
 
 enum class TvMainTab(val title: String, val icon: ImageVector) {
-    EXPLORE("探索", Icons.Default.Explore),
-    TOPLIST("榜单", Icons.Default.Leaderboard),
-    SEARCH("搜索", Icons.Default.Search),
-    LIBRARY("曲库", Icons.Default.LibraryMusic),
-    SOURCE_MARKET("音源市场", Icons.Default.Extension),
-    HISTORY("历史", Icons.Default.History),
-    SETTINGS("设置", Icons.Default.Settings)
+    EXPLORE("首页", Icons.Rounded.Explore),
+    DISCOVER("发现音乐", Icons.Rounded.Explore),
+    TOPLIST("榜单", Icons.Rounded.Leaderboard),
+    SEARCH("搜索", Icons.Rounded.Search),
+    LIBRARY("曲库", Icons.Rounded.LibraryMusic),
+    SOURCE_MARKET("音源市场", Icons.Rounded.Extension),
+    MORE("更多", Icons.Rounded.MoreHoriz),
+    HISTORY("历史", Icons.Rounded.History),
+    SETTINGS("设置", Icons.Rounded.Settings)
 }
 
 /**
  * 平台与音质徽标组件（对齐主项目 WY / TX / KG / KW / MG / LX 标签）
  */
 @Composable
-fun SongPlatformBadge(
-    source: String,
-    qualityText: String? = null,
-    sourceNameText: String? = null,
-    isTrial: Boolean = false,
-    modifier: Modifier = Modifier
-) {
-    val (label, bgColor) = when (source.lowercase()) {
-        "wy", "netease", "netease_native" -> "网易云" to BadgeNetease
-        "tx", "qq" -> "QQ音乐" to BadgeQqMusic
-        "kg", "kugou" -> "酷狗" to BadgeKugou
-        "kw", "kuwo" -> "酷我" to BadgeKuwo
-        "mg", "migu" -> "咪咕" to BadgeMigu
-        else -> "LX音源" to BadgeLx
+fun SongPlatformBadge(source: String, qualityText: String? = null, sourceNameText: String? = null,
+    isTrial: Boolean = false, modifier: Modifier = Modifier) {
+    val label = when {
+        source.startsWith("local:") || source.contains("local", true) -> "本地目录"
+        source.startsWith("dav:") || source.contains("webdav", true) -> "WebDAV"
+        source in listOf("wy", "netease", "netease_native") -> "网易云"
+        source in listOf("tx", "qq") -> "QQ音乐"
+        source in listOf("kg", "kugou") -> "酷狗"
+        source in listOf("kw", "kuwo") -> "酷我"
+        source in listOf("mg", "migu") -> "咪咕"
+        else -> sourceNameText?.takeIf { it.isNotBlank() } ?: "扩展音源"
     }
-
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(6.dp))
-                .background(bgColor.copy(alpha = 0.25f))
-                .border(1.dp, bgColor.copy(alpha = 0.7f), RoundedCornerShape(6.dp))
-                .padding(horizontal = 6.dp, vertical = 2.dp)
-        ) {
-            Text(
-                text = label,
-                color = Color.White,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        if (!sourceNameText.isNullOrBlank()) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(PixelPlayPurplePrimary.copy(alpha = 0.2f))
-                    .border(1.dp, PixelPlayPurplePrimary.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    text = sourceNameText,
-                    color = PixelPlayLightPurple,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-        }
-
-        if (!qualityText.isNullOrBlank()) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(PixelPlayGold.copy(alpha = 0.18f))
-                    .border(1.dp, PixelPlayGold.copy(alpha = 0.65f), RoundedCornerShape(6.dp))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    text = qualityText,
-                    color = PixelPlayGold,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
-
-        if (isTrial) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(PixelPlayOrange.copy(alpha = 0.25f))
-                    .border(1.dp, PixelPlayOrange, RoundedCornerShape(6.dp))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    text = "试听片段",
-                    color = PixelPlayOrange,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-    }
+    val parts = listOfNotNull(label, qualityText?.takeIf { it.isNotBlank() }, if (isTrial) "试听" else null)
+    Text(parts.joinToString(" · "), modifier, color = if (isTrial) MaterialTheme.colorScheme.tertiary
+        else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall,
+        maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
 /**
@@ -207,40 +169,37 @@ fun SongPlatformBadge(
 fun TvWavyMusicSlider(
     progress: Float,
     isPlaying: Boolean,
+    canSeek: Boolean,
+    isAdjusting: Boolean,
+    onToggleAdjust: () -> Unit,
     onSeekRelative: (Long) -> Unit,
+    onExitDown: () -> Boolean,
     modifier: Modifier = Modifier,
     activeColor: Color = MaterialTheme.colorScheme.primary,
-    inactiveColor: Color = Color.White.copy(alpha = 0.22f)
+    inactiveColor: Color = Color.White.copy(alpha = 0.22f),
+    onSetProgress: ((Float) -> Unit)? = null
 ) {
+    val progressDescription = stringResource(if (isAdjusting) R.string.tv_progress_adjust else R.string.tv_progress)
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
 
-    val infiniteTransition = rememberInfiniteTransition(label = "waveTransition")
-    val phase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2f * PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1300, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "wavePhase"
-    )
+    val phase = 0f
 
     val amplitudeFactor by animateFloatAsState(
-        targetValue = if (isPlaying) 1f else 0f,
-        animationSpec = tween(durationMillis = 350),
+        targetValue = if (isPlaying && !isAdjusting) 1f else 0f,
+        animationSpec = tween(durationMillis = (350 * LocalTvMotionScale.current).toInt()),
         label = "waveAmplitude"
     )
 
     val strokeColor by animateColorAsState(
-        targetValue = if (isFocused) PixelPlayPink else activeColor,
-        animationSpec = tween(200),
+        targetValue = activeColor,
+        animationSpec = tween((200 * LocalTvMotionScale.current).toInt()),
         label = "sliderStrokeColor"
     )
 
     Box(
         modifier = modifier
-            .height(34.dp)
+            .height(48.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(
                 if (isFocused) Color.White.copy(alpha = 0.1f) else Color.Transparent
@@ -251,22 +210,35 @@ fun TvWavyMusicSlider(
                 shape = RoundedCornerShape(12.dp)
             )
             .onKeyEvent { event ->
-                if (event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
-                    when (event.nativeKeyEvent.keyCode) {
-                        KeyEvent.KEYCODE_DPAD_LEFT -> {
-                            onSeekRelative(-5000L)
-                            true
-                        }
-                        KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                            onSeekRelative(5000L)
-                            true
-                        }
-                        else -> false
+                val key = event.nativeKeyEvent
+                if (!canSeek || key.action != KeyEvent.ACTION_DOWN) return@onKeyEvent false
+                when (key.keyCode) {
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                        if (key.repeatCount == 0) onToggleAdjust()
+                        true
                     }
-                } else {
-                    false
+                    KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                        if (isAdjusting) onSeekRelative(if (key.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -5000L else 5000L)
+                        true
+                    }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> if (isAdjusting) true else onExitDown()
+                    KeyEvent.KEYCODE_DPAD_UP -> isAdjusting
+                    else -> false
                 }
             }
+            .semantics {
+                contentDescription = progressDescription
+                progressBarRangeInfo = ProgressBarRangeInfo(progress.coerceIn(0f, 1f), 0f..1f)
+                if (!canSeek) disabled()
+                if (canSeek && onSetProgress != null) {
+                    setProgress { requested ->
+                        onSetProgress(requested.coerceIn(0f, 1f))
+                        true
+                    }
+                }
+            }
+            // Always focusable: toggling focusability with canSeek (duration resets to 0 on every
+            // track change) would clear focus from a focused slider. Keys are ignored while !canSeek.
             .focusable(interactionSource = interactionSource)
             .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center
@@ -276,8 +248,8 @@ fun TvWavyMusicSlider(
             val centerY = size.height / 2f
             val clampedProgress = progress.coerceIn(0f, 1f)
             val activeEndX = width * clampedProgress
-            val waveLength = 28.dp.toPx()
-            val maxAmplitude = 5.dp.toPx() * amplitudeFactor
+            val waveLength = 20.dp.toPx()
+            val maxAmplitude = 1.8.dp.toPx() * amplitudeFactor
 
             // 1. 绘制已播放部分波浪线
             if (activeEndX > 0f) {
@@ -299,7 +271,7 @@ fun TvWavyMusicSlider(
                 drawPath(
                     path = wavePath,
                     color = strokeColor,
-                    style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
+                    style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
                 )
             }
 
@@ -327,463 +299,192 @@ fun TvWavyMusicSlider(
                 radius = thumbRadius,
                 center = Offset(activeEndX, thumbY)
             )
-            if (isFocused) {
-                drawCircle(
-                    color = strokeColor.copy(alpha = 0.45f),
-                    radius = thumbRadius * 1.7f,
-                    center = Offset(activeEndX, thumbY)
-                )
-            }
+
         }
     }
 }
 
-/**
- * TV 顶部胶囊导航栏 (Top Pill Navigation Bar)
- */
+/** Shared browse geometry; screenshot fixtures use the same frame as MainActivity. */
 @Composable
-fun TvTopPillNavigationBar(
-    selectedTab: TvMainTab,
-    onSelectTab: (TvMainTab) -> Unit,
-    onOpenPlayer: () -> Unit,
-    onOpenAccounts: () -> Unit,
-    accountSummary: String,
-    modifier: Modifier = Modifier
-) {
-    val mainTabs = listOf(
-        TvMainTab.EXPLORE,
-        TvMainTab.TOPLIST,
-        TvMainTab.SEARCH,
-        TvMainTab.LIBRARY,
-        TvMainTab.SOURCE_MARKET
-    )
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 32.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        // 左侧品牌 Logo
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(
-                        Brush.linearGradient(
-                            listOf(PixelPlayPurplePrimary, PixelPlayPink)
-                        )
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.MusicNote,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-            Column {
-                Text(
-                    text = "像素播放器 TV",
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.ExtraBold
-                )
-                Text(
-                    text = "PixelPlay Expressive",
-                    color = PixelPlayLightPurple.copy(alpha = 0.75f),
-                    fontSize = 10.sp
-                )
-            }
+internal fun TvBrowseFrame(navigation: @Composable () -> Unit, content: @Composable () -> Unit,
+    miniPlayer: @Composable () -> Unit, modifier: Modifier = Modifier) {
+    val spec = rememberTvWindowSpec()
+    Column(modifier.fillMaxSize().padding(horizontal = spec.horizontalPadding, vertical = spec.verticalPadding)) {
+        Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spec.gutter)) {
+            navigation()
+            Box(Modifier.weight(1f).fillMaxHeight()) { content() }
         }
+        miniPlayer()
+    }
+}
 
-        // 中部主导航胶囊群
-        Surface(
-            color = PixelPlaySurface.copy(alpha = 0.85f),
-            shape = RoundedCornerShape(50),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                mainTabs.forEach { tab ->
-                    val isSelected = selectedTab == tab
-                    var isFocused by remember { mutableStateOf(false) }
-                    Row(
-                        modifier = Modifier
-                            .tvPillFocusable(
-                                isSelected = isSelected,
-                                onFocusChanged = { focused ->
-                                    isFocused = focused
-                                },
-                                onClick = { onSelectTab(tab) }
-                            )
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = tab.icon,
-                            contentDescription = tab.title,
-                            tint = when {
-                                isFocused -> PixelPlayPurpleDark
-                                isSelected -> MaterialTheme.colorScheme.primary
-                                else -> PixelPlayLightPurple
-                            },
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = tab.title,
-                            color = when {
-                                isFocused -> PixelPlayPurpleDark
-                                isSelected -> Color.White
-                                else -> PixelPlayLightPurple
-                            },
-                            fontSize = 14.sp,
-                            fontWeight = if (isSelected || isFocused) FontWeight.Bold else FontWeight.Medium
-                        )
+@Composable
+fun TvNavigationRail(selectedTab: TvMainTab, onSelectTab: (TvMainTab) -> Unit,
+    selectedRequester: FocusRequester, modifier: Modifier = Modifier) {
+    val spec = rememberTvWindowSpec()
+    val tabs = listOf(TvMainTab.EXPLORE, TvMainTab.SEARCH, TvMainTab.LIBRARY, TvMainTab.TOPLIST, TvMainTab.MORE)
+    val active = when (selectedTab) { TvMainTab.DISCOVER -> TvMainTab.EXPLORE; in tabs -> selectedTab; else -> TvMainTab.MORE }
+    Column(modifier.width(spec.railWidth).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("像素", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
+        if (!spec.compact) Text("播放器 TV", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            tabs.forEach { tab ->
+                key(tab) {
+                    val chosen = tab == active
+                    Row(Modifier.fillMaxWidth().then(if (chosen) Modifier.focusRequester(selectedRequester) else Modifier)
+                        .tvFocusableCard(focusKey = "nav/" + tab.name, selected = chosen, onClick = { onSelectTab(tab) })
+                        .heightIn(min = 52.dp).padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(tab.icon, null, Modifier.size(20.dp), tint = if (chosen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(tab.title, style = MaterialTheme.typography.titleMedium,
+                            textDecoration = if (chosen) TextDecoration.Underline else null,
+                            fontWeight = if (chosen) FontWeight.SemiBold else FontWeight.Medium,
+                            color = if (chosen) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
         }
-
-        // 右侧快捷操作区 (全屏播放、历史、多平台账号、设置)
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            NavActionPill(
-                icon = Icons.Default.MusicNote,
-                label = "播放页",
-                isSelected = false,
-                onClick = onOpenPlayer
-            )
-            NavActionPill(
-                icon = Icons.Default.History,
-                label = "历史",
-                isSelected = selectedTab == TvMainTab.HISTORY,
-                onClick = { onSelectTab(TvMainTab.HISTORY) }
-            )
-            NavActionPill(
-                icon = Icons.Default.AccountCircle,
-                label = accountSummary,
-                isSelected = false,
-                onClick = onOpenAccounts
-            )
-            NavActionPill(
-                icon = Icons.Default.Settings,
-                label = "设置",
-                isSelected = selectedTab == TvMainTab.SETTINGS,
-                onClick = { onSelectTab(TvMainTab.SETTINGS) }
-            )
-        }
     }
 }
 
 @Composable
-private fun NavActionPill(
-    icon: ImageVector,
-    label: String,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
-    var isFocused by remember { mutableStateOf(false) }
-    Row(
-        modifier = Modifier
-            .tvPillFocusable(
-                isSelected = isSelected,
-                onFocusChanged = { isFocused = it },
-                onClick = onClick
-            )
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = if (isFocused) PixelPlayPurpleDark else Color.White,
-            modifier = Modifier.size(18.dp)
-        )
-        Text(
-            text = label,
-            color = if (isFocused) PixelPlayPurpleDark else PixelPlayLightPurple,
-            fontSize = 13.sp,
-            fontWeight = if (isFocused || isSelected) FontWeight.Bold else FontWeight.Medium,
-            maxLines = 1
-        )
-    }
-}
-
-/**
- * TV 底部悬浮胶囊 MiniPlayer (Floating Capsule MiniPlayer)
- */
-@Composable
-fun TvFloatingMiniPlayer(
-    currentSong: Song?,
-    isPlaying: Boolean,
-    playMode: PlayMode,
-    progress: Float,
-    streamResult: StreamResult?,
-    onTogglePlayPause: () -> Unit,
-    onPlayNext: () -> Unit,
-    onPlayPrev: () -> Unit,
-    onTogglePlayMode: () -> Unit,
-    onOpenFullPlayer: () -> Unit,
-    modifier: Modifier = Modifier
-) {
+fun TvMiniPlayer(currentSong: Song?, isPlaying: Boolean, playMode: PlayMode, progress: Float,
+    streamResult: StreamResult?, onTogglePlayPause: () -> Unit, onPlayNext: () -> Unit,
+    onPlayPrev: () -> Unit, onTogglePlayMode: () -> Unit, onOpenFullPlayer: () -> Unit,
+    modifier: Modifier = Modifier, failure: String? = null) {
     val song = currentSong ?: return
-    val sourceName = when (streamResult) {
-        is StreamResult.Full -> streamResult.sourceName
-        is StreamResult.Trial -> streamResult.sourceName
-        null -> null
-    }
-    val isTrial = streamResult is StreamResult.Trial
-
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 36.dp, vertical = 10.dp),
-        color = PixelPlaySurface.copy(alpha = 0.94f),
-        shape = RoundedCornerShape(28.dp),
-        tonalElevation = 10.dp,
-        shadowElevation = 16.dp,
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f))
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            // 顶部极细进度条指示
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(3.dp)
-                    .background(Color.White.copy(alpha = 0.08f))
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(progress.coerceIn(0f, 1f))
-                        .height(3.dp)
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(MaterialTheme.colorScheme.primary, PixelPlayPink)
-                            )
-                        )
-                )
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                // 左侧：封面 + 歌曲信息 + 音源徽标 (点击进入全屏播放器)
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .tvFocusableCard(
-                            scaleFocused = 1.02f,
-                            shape = RoundedCornerShape(18.dp),
-                            unfocusedBackgroundColor = Color.Transparent,
-                            unfocusedBorderColor = Color.Transparent,
-                            onClick = onOpenFullPlayer
-                        )
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    AsyncImage(
-                        model = song.coverUrl,
-                        contentDescription = song.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(PixelPlaySurfaceVariant)
-                    )
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = song.title,
-                                color = Color.White,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            SongPlatformBadge(
-                                source = song.source,
-                                sourceNameText = sourceName,
-                                isTrial = isTrial
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "${song.artist} · ${song.album.ifBlank { "精选单曲" }}",
-                            color = PixelPlayLightPurple,
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(16.dp))
-
-                // 右侧：播放控制胶囊按钮组
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    MiniControlCircle(
-                        icon = when (playMode) {
-                            PlayMode.SEQUENCE -> Icons.Default.Repeat
-                            PlayMode.SHUFFLE -> Icons.Default.Shuffle
-                            PlayMode.REPEAT_ONE -> Icons.Default.RepeatOne
-                            PlayMode.HEART_MODE -> Icons.Default.Favorite
-                        },
-                        contentDescription = playMode.displayName,
-                        onClick = onTogglePlayMode
-                    )
-                    MiniControlCircle(
-                        icon = Icons.Default.SkipPrevious,
-                        contentDescription = "上一曲",
-                        onClick = onPlayPrev
-                    )
-                    MiniControlCircle(
-                        icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "暂停" else "播放",
-                        isPrimary = true,
-                        onClick = onTogglePlayPause
-                    )
-                    MiniControlCircle(
-                        icon = Icons.Default.SkipNext,
-                        contentDescription = "下一曲",
-                        onClick = onPlayNext
-                    )
+    Column(modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
+        Box(Modifier.fillMaxWidth().height(2.dp).background(MaterialTheme.colorScheme.surfaceVariant)) {
+            Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(2.dp).background(MaterialTheme.colorScheme.primary))
+        }
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.weight(1f).tvFocusableCard(focusKey = "mini/info", onClick = onOpenFullPlayer)
+                .padding(6.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TvArtwork(song.coverUrl, Modifier.size(48.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(song.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(failure ?: listOf(song.artist, if (isPlaying) "正在播放" else "已暂停").filter(String::isNotBlank).joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
+            MiniControlCircle(when (playMode) { PlayMode.SEQUENCE -> Icons.Rounded.Repeat; PlayMode.SHUFFLE -> Icons.Rounded.Shuffle
+                PlayMode.REPEAT_ONE -> Icons.Rounded.RepeatOne; PlayMode.HEART_MODE -> Icons.Rounded.Favorite }, playMode.displayName, onClick = onTogglePlayMode)
+            MiniControlCircle(Icons.Rounded.SkipPrevious, "上一首", onClick = onPlayPrev)
+            MiniControlCircle(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                if (failure != null) "重试" else if (isPlaying) "暂停" else "播放", isPrimary = true, onClick = onTogglePlayPause)
+            MiniControlCircle(Icons.Rounded.SkipNext, "下一首", onClick = onPlayNext)
         }
     }
 }
 
 @Composable
-private fun MiniControlCircle(
-    icon: ImageVector,
-    contentDescription: String,
-    isPrimary: Boolean = false,
-    onClick: () -> Unit
+internal fun TvArtwork(
+    coverUrl: String?,
+    modifier: Modifier = Modifier,
+    shape: RoundedCornerShape = RoundedCornerShape(12.dp)
 ) {
-    var isFocused by remember { mutableStateOf(false) }
     Box(
-        modifier = Modifier
-            .size(if (isPrimary) 44.dp else 38.dp)
-            .tvPillFocusable(
-                isSelected = isPrimary,
-                scaleFocused = 1.12f,
-                shape = CircleShape,
-                onFocusChanged = { isFocused = it },
-                onClick = onClick
-            ),
+        modifier.clip(shape).background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = if (isFocused) PixelPlayPurpleDark else Color.White,
-            modifier = Modifier.size(if (isPrimary) 22.dp else 18.dp)
+            Icons.Rounded.MusicNote,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+            modifier = Modifier.fillMaxSize(0.42f)
         )
+        if (!coverUrl.isNullOrBlank()) {
+            AsyncImage(coverUrl, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        }
     }
 }
 
-/**
- * TV 全局沉浸式动态背景层 (支持主项目深蓝紫流体光晕 + 专辑封面高斯模糊 + 可选必应/自定义壁纸)
- */
 @Composable
-fun TvImmersiveBackdrop(
-    coverUrl: String?,
-    useWallpaper: Boolean,
-    wallpaperUrl: String?,
-    wallpaperOpacityPercent: Int,
-    modifier: Modifier = Modifier
-) {
-    val primary = MaterialTheme.colorScheme.primary
-    val secondary = MaterialTheme.colorScheme.secondary
+private fun MiniControlCircle(icon: ImageVector, contentDescription: String, isPrimary: Boolean = false, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val foreground = if (focused) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+    val compact = rememberTvWindowSpec().compact
+    Column(Modifier.width(if (compact) 52.dp else 78.dp).tvPillFocusable(isPrimary = isPrimary, onFocusChanged = { focused = it }, onClick = onClick)
+        .padding(vertical = 5.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(icon, if (compact) contentDescription else null, Modifier.size(24.dp), tint = foreground)
+        if (!compact) Text(contentDescription, style = MaterialTheme.typography.labelSmall, color = foreground, maxLines = 1)
+    }
+}
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(PixelPlayPurpleDark)
-    ) {
+@Composable
+fun TvImmersiveBackdrop(coverUrl: String?, useWallpaper: Boolean, wallpaperUrl: String?,
+    wallpaperOpacityPercent: Int, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         if (useWallpaper) {
-            val resolvedUrl = if (!wallpaperUrl.isNullOrBlank()) {
-                wallpaperUrl
-            } else {
-                "https://bing.biturl.top/?resolution=1920&format=image&index=0&mkt=zh-CN"
-            }
-            AsyncImage(
-                model = resolvedUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-            val overlayAlpha = (wallpaperOpacityPercent / 100f).coerceIn(0.15f, 0.92f)
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(PixelPlayPurpleDark.copy(alpha = overlayAlpha))
-            )
-        } else {
-            // 主项目 PixelPlay 流体弥散背景 + 专辑封面柔光层
-            if (!coverUrl.isNullOrBlank()) {
-                AsyncImage(
-                    model = coverUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .blur(90.dp)
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(
-                                primary.copy(alpha = 0.25f),
-                                secondary.copy(alpha = 0.16f),
-                                PixelPlayPurpleDark.copy(alpha = 0.92f)
-                            ),
-                            radius = 1200f
-                        )
+            AsyncImage(model = wallpaperUrl?.takeIf { it.isNotBlank() }
+                ?: "https://bing.biturl.top/?resolution=1920&format=image&index=0&mkt=zh-CN",
+                contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background.copy(
+                alpha = 0.82f + (wallpaperOpacityPercent / 100f).coerceIn(0f, 1f) * 0.16f)))
+        }
+    }
+}
+
+@Composable
+internal fun TvDialogPanel(
+    title: String,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    footer: @Composable RowScope.() -> Unit,
+    body: @Composable ColumnScope.() -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        // Modal actions must not replace the caller page's remembered target.
+        CompositionLocalProvider(LocalTvFocusMemory provides null) {
+        BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Surface(
+                modifier = modifier
+                    .width(minOf(maxWidth - 32.dp, 640.dp))
+                    .heightIn(max = maxHeight - 24.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp
+            ) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Column(Modifier.weight(1f, fill = false).fillMaxWidth(), content = body)
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                        content = footer
                     )
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                PixelPlayPurpleDark.copy(alpha = 0.72f),
-                                PixelPlayPurpleDark.copy(alpha = 0.85f),
-                                PixelPlayPurpleDark.copy(alpha = 0.96f)
-                            )
-                        )
-                    )
-            )
+                }
+            }
+        }
+        }
+    }
+}
+
+@Composable
+internal fun TvTextAction(
+    label: String,
+    modifier: Modifier = Modifier,
+    selected: Boolean? = null,
+    primary: Boolean = false,
+    enabled: Boolean = true,
+    busy: Boolean = false,
+    onClick: () -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    Box(
+        modifier.tvPillFocusable(isSelected = selected, isPrimary = primary, enabled = enabled, busy = busy, onFocusChanged = { focused = it }, onClick = onClick)
+            .heightIn(min = 48.dp)
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(if (busy) label + " · " + stringResource(R.string.tv_processing) else label, style = MaterialTheme.typography.labelLarge,
+                color = if (focused) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

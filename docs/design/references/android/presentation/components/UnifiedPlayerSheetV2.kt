@@ -1,0 +1,984 @@
+package com.theveloper.pixelplay.presentation.components
+
+import android.widget.Toast
+import com.theveloper.pixelplay.presentation.components.ExpressiveOfflineDialog
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.MutatorMutex
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.layout.layout
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.MotionScheme
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.media3.common.util.UnstableApi
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.currentBackStackEntryAsState
+import com.theveloper.pixelplay.data.diagnostics.AdvancedPerformanceDiagnostics
+import com.theveloper.pixelplay.data.model.Song
+import com.theveloper.pixelplay.data.preferences.sanitizeNavBarCornerRadius
+import com.theveloper.pixelplay.presentation.components.scoped.PlayerAlbumNavigationEffect
+import com.theveloper.pixelplay.presentation.components.scoped.PlayerArtistNavigationEffect
+import com.theveloper.pixelplay.presentation.components.scoped.PlayerSheetPredictiveBackHandler
+import com.theveloper.pixelplay.presentation.components.scoped.QueueSheetRuntimeEffects
+import com.theveloper.pixelplay.presentation.components.scoped.SheetMotionController
+import com.theveloper.pixelplay.presentation.components.scoped.miniPlayerDismissHorizontalGesture
+import com.theveloper.pixelplay.presentation.components.scoped.playerSheetVerticalDragGesture
+import com.theveloper.pixelplay.presentation.components.scoped.rememberFullPlayerCompositionPolicy
+import com.theveloper.pixelplay.presentation.components.scoped.rememberCastSheetState
+import com.theveloper.pixelplay.presentation.components.scoped.rememberFullPlayerVisualState
+import com.theveloper.pixelplay.presentation.components.scoped.rememberMiniPlayerDismissGestureHandler
+import com.theveloper.pixelplay.presentation.components.scoped.rememberPrewarmFullPlayer
+import com.theveloper.pixelplay.presentation.components.scoped.rememberQueueSheetState
+import com.theveloper.pixelplay.presentation.components.scoped.rememberSheetActionHandlers
+import com.theveloper.pixelplay.presentation.components.scoped.rememberSheetBackAndDragState
+import com.theveloper.pixelplay.presentation.components.scoped.rememberSheetInteractionState
+import com.theveloper.pixelplay.presentation.components.scoped.rememberSheetModalOverlayController
+import com.theveloper.pixelplay.presentation.components.scoped.rememberSheetOverlayState
+import com.theveloper.pixelplay.presentation.components.scoped.rememberSheetThemeState
+import com.theveloper.pixelplay.presentation.components.scoped.rememberSheetVisualState
+import com.theveloper.pixelplay.presentation.navigation.navigateSafely
+import com.theveloper.pixelplay.presentation.viewmodel.PlayerSheetState
+import com.theveloper.pixelplay.presentation.viewmodel.PlayerViewModel
+import com.theveloper.pixelplay.presentation.viewmodel.StablePlayerState
+import com.theveloper.pixelplay.ui.theme.LocalPixelPlayDarkTheme
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.roundToInt
+
+private data class PlayerUiSheetSliceV2(
+    val currentQueueSourceName: String = "",
+    val preparingSongId: String? = null
+)
+
+/**
+ * V2 real host: no longer delegates to the legacy `UnifiedPlayerSheet`.
+ *
+ * This path keeps behavior parity, but now owns its own runtime wiring so we can
+ * profile and optimize V2 independently while preserving the Experimental switch.
+ */
+@androidx.annotation.OptIn(UnstableApi::class, ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun UnifiedPlayerSheetV2(
+    playerViewModel: PlayerViewModel,
+    sheetCollapsedTargetY: Float,
+    containerHeight: Dp,
+    collapsedStateHorizontalPadding: Dp = 12.dp,
+    navController: NavHostController,
+    hideMiniPlayer: Boolean = false,
+    isNavBarHidden: Boolean = false,
+    navRailPadding: Dp = 0.dp,
+    isLandscape: Boolean = false,
+    isFloatingBottomBar: Boolean = false,
+    onFloatingBottomBarCollapse: () -> Unit = {},
+    /** 滚动隐藏时迷你条的下移量（px），仅折叠态生效 */
+    miniPlayerScrollShiftPxProvider: () -> Float = { 0f }
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val latestContext by rememberUpdatedState(context)
+    var showNoInternetDialog by remember { mutableStateOf(false) }
+
+    // MediaStore write-permission launcher (for metadata editing without MANAGE_EXTERNAL_STORAGE)
+    val writePermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        playerViewModel.onWritePermissionResult(result.resultCode == android.app.Activity.RESULT_OK)
+    }
+
+    // MediaStore delete-permission launcher (system delete confirmation dialog)
+    val deletePermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        playerViewModel.onDeletePermissionResult(result.resultCode == android.app.Activity.RESULT_OK)
+    }
+
+    LaunchedEffect(playerViewModel, lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            launch {
+                playerViewModel.toastEvents.collect { message ->
+                    Toast.makeText(latestContext, message, Toast.LENGTH_SHORT).show()
+                }
+            }
+            launch {
+                playerViewModel.showNoInternetDialog.collect {
+                    showNoInternetDialog = true
+                }
+            }
+            launch {
+                playerViewModel.writePermissionRequest.collect { intentSender ->
+                    writePermissionLauncher.launch(
+                        androidx.activity.result.IntentSenderRequest.Builder(intentSender).build()
+                    )
+                }
+            }
+            launch {
+                playerViewModel.deletePermissionRequest.collect { intentSender ->
+                    deletePermissionLauncher.launch(
+                        androidx.activity.result.IntentSenderRequest.Builder(intentSender).build()
+                    )
+                }
+            }
+        }
+    }
+
+    if (showNoInternetDialog) {
+        ExpressiveOfflineDialog(
+            onDismiss = { showNoInternetDialog = false },
+            onRetry = {
+                 playerViewModel.refreshLocalConnectionInfo()
+                 showNoInternetDialog = false
+            }
+        )
+    }
+
+    val infrequentPlayerStateReference = playerViewModel.stablePlayerState.collectAsStateWithLifecycle()
+    val infrequentPlayerState = infrequentPlayerStateReference.value
+    val currentBackStackEntry by navController.currentBackStackEntryAsState()
+
+    val currentPositionState = playerViewModel.currentPlaybackPosition.collectAsStateWithLifecycle()
+    val remotePositionState = playerViewModel.remotePosition.collectAsStateWithLifecycle()
+    val isRemotePlaybackActive by playerViewModel.isRemotePlaybackActive.collectAsStateWithLifecycle()
+    val positionToDisplayProvider = remember(isRemotePlaybackActive) {
+        {
+            if (isRemotePlaybackActive) remotePositionState.value
+            else currentPositionState.value
+        }
+    }
+
+    val isFavorite by playerViewModel.isCurrentSongFavorite.collectAsStateWithLifecycle()
+    val isSheetVisible by playerViewModel.isSheetVisible.collectAsStateWithLifecycle()
+
+    // ⚡ Optimization: bridge the gap between tracks using a retained song.
+    // When currentSong flips to null briefly during engine transitions or hydration,
+    // this ensures showPlayerContentArea stays true and the UI remains mounted,
+    // preventing a visual "flash" where the player disappears for ~1s.
+    // ⚠️ 但当用户主动 dismiss（横滑移除 mini-player）后，isSheetVisible 变为 false，
+    // 此时必须清空 retainedSong，否则 showPlayerContentArea 仍为 true，
+    // UnifiedPlayerSheetV2 的 Surface 继续全屏渲染并拦截底部导航栏点击，
+    // 导致"横滑移除 mini-player 后无法切换界面"。
+    var retainedSong by remember { mutableStateOf<Song?>(null) }
+    LaunchedEffect(infrequentPlayerState.currentSong?.id) {
+        if (infrequentPlayerState.currentSong != null) {
+            retainedSong = infrequentPlayerState.currentSong
+        }
+    }
+    LaunchedEffect(isSheetVisible) {
+        if (!isSheetVisible) {
+            retainedSong = null
+        }
+    }
+    val activeSong = infrequentPlayerState.currentSong ?: retainedSong
+
+    val playerUiSheetSlice by remember {
+        playerViewModel.playerUiState
+            .map { state ->
+                PlayerUiSheetSliceV2(
+                    currentQueueSourceName = state.currentQueueSourceName,
+                    preparingSongId = state.preparingSongId
+                )
+            }
+            .distinctUntilChanged()
+    }.collectAsStateWithLifecycle(initialValue = PlayerUiSheetSliceV2())
+    val currentQueueSourceName = playerUiSheetSlice.currentQueueSourceName
+    val preparingSongId = playerUiSheetSlice.preparingSongId
+
+    val currentSheetContentState by playerViewModel.sheetState.collectAsStateWithLifecycle()
+    val predictiveBackCollapseProgress by playerViewModel.predictiveBackCollapseFraction.collectAsStateWithLifecycle()
+    val predictiveBackSwipeEdge by playerViewModel.predictiveBackSwipeEdge.collectAsStateWithLifecycle()
+    val prewarmFullPlayer = rememberPrewarmFullPlayer(infrequentPlayerState.currentSong?.id)
+
+    val playerConfig by playerViewModel.playerConfigSlice.collectAsStateWithLifecycle()
+    // ⚡ 迷你条圆角使用自有偏好，不再复用导航栏圆角（此前联动会导致调导航栏圆角时迷你条跟着变）
+    val miniPlayerCornerRadius by playerViewModel.miniPlayerCornerRadius.collectAsStateWithLifecycle()
+    val miniPlayerCornerRadiusDp = miniPlayerCornerRadius.coerceIn(0, 32).dp
+    val navBarCornerRadius = sanitizeNavBarCornerRadius(playerConfig.navBarCornerRadius)
+    val navBarStyle = playerConfig.navBarStyle
+    val carouselStyle = playerConfig.carouselStyle
+    // 播放器封面样式（默认轮播 / 精选轮播卡片），设置可切换
+    val fullPlayerLoadingTweaks = playerConfig.fullPlayerLoadingTweaks
+    val tapBackgroundClosesPlayer = playerConfig.tapBackgroundClosesPlayer
+    val useSmoothCorners = playerConfig.useSmoothCorners
+    val playerThemePreference = playerConfig.playerThemePreference
+
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+
+    val offsetAnimatable = remember { Animatable(0f) }
+    // 使用真实窗口尺寸：平板小窗/分屏时即使 Configuration 不更新也会正确变化
+    val windowSize = LocalWindowInfo.current.containerSize
+    val screenWidthPx = remember(windowSize) { windowSize.width.toFloat() }
+    val dismissThresholdPx = remember(screenWidthPx) { screenWidthPx * 0.4f }
+    val swipeDismissProgress by remember(dismissThresholdPx) {
+        derivedStateOf {
+            if (dismissThresholdPx == 0f) 0f
+            else (abs(offsetAnimatable.value) / dismissThresholdPx).coerceIn(0f, 1f)
+        }
+    }
+
+    val screenHeightPx = remember(windowSize) { windowSize.height.toFloat() }
+    val miniPlayerContentHeightPx = remember { with(density) { MiniPlayerHeight.toPx() } }
+
+    val isCastConnecting by playerViewModel.isCastConnecting.collectAsStateWithLifecycle()
+    val showPlayerContentArea by remember(activeSong, isCastConnecting) {
+        derivedStateOf { activeSong != null || isCastConnecting }
+    }
+
+    val playerContentExpansionFraction = playerViewModel.playerContentExpansionFraction
+    val isPlayerFullyExpanded by remember(playerContentExpansionFraction, currentSheetContentState) {
+        derivedStateOf {
+            playerContentExpansionFraction.value >= 0.99f &&
+                currentSheetContentState == PlayerSheetState.EXPANDED
+        }
+    }
+    val sheetAnimationSpec = remember {
+        spring<Float>(
+            stiffness = Spring.StiffnessMediumLow,
+            dampingRatio = Spring.DampingRatioLowBouncy
+        )
+    }
+    val sheetAnimationMutex = remember { MutatorMutex() }
+    val sheetExpandedTargetY = 0f
+    val initialY =
+        if (currentSheetContentState == PlayerSheetState.COLLAPSED) sheetCollapsedTargetY
+        else sheetExpandedTargetY
+    val currentSheetTranslationY = remember { Animatable(initialY) }
+    val visualOvershootScaleY = remember { Animatable(1f) }
+
+    // 防止快速点击导致动画冲突卡住
+    var isSheetAnimating by remember { mutableStateOf(false) }
+
+    // ⚡ sheetMotionController: 封装 translationY 和 expansionFraction 的动画操作
+    val sheetMotionController = remember(
+        currentSheetTranslationY,
+        playerContentExpansionFraction,
+        sheetAnimationMutex,
+        sheetAnimationSpec
+    ) {
+        SheetMotionController(
+            translationY = currentSheetTranslationY,
+            expansionFraction = playerContentExpansionFraction,
+            mutex = sheetAnimationMutex,
+            defaultAnimationSpec = sheetAnimationSpec,
+            expandedY = sheetExpandedTargetY
+        )
+    }
+
+    // ⚡ animatePlayerSheet: 统一的展开/折叠动画入口
+    fun animatePlayerSheet(
+        targetExpanded: Boolean,
+        animationSpec: androidx.compose.animation.core.AnimationSpec<Float>? = null,
+        initialVelocity: Float = 0f
+    ) {
+        scope.launch {
+            isSheetAnimating = true
+            try {
+                sheetMotionController.animateTo(
+                    targetExpanded = targetExpanded,
+                    canExpand = showPlayerContentArea,
+                    collapsedY = sheetCollapsedTargetY,
+                    animationSpec = animationSpec ?: sheetAnimationSpec,
+                    initialVelocity = initialVelocity
+                )
+            } finally {
+                isSheetAnimating = false
+            }
+        }
+    }
+
+    PlayerArtistNavigationEffect(
+        navController = navController,
+        sheetCollapsedTargetY = sheetCollapsedTargetY,
+        sheetMotionController = sheetMotionController,
+        playerViewModel = playerViewModel
+    )
+    PlayerAlbumNavigationEffect(
+        navController = navController,
+        sheetCollapsedTargetY = sheetCollapsedTargetY,
+        sheetMotionController = sheetMotionController,
+        playerViewModel = playerViewModel
+    )
+
+    // FullPlayerVisualState now holds lazy getters that read from the Animatable
+    // inside graphicsLayer (draw-phase), avoiding per-frame recomposition.
+    val fullPlayerVisualState = rememberFullPlayerVisualState(
+        expansionFraction = playerContentExpansionFraction,
+        initialOffsetY = 0f
+    )
+    val fullPlayerCompositionPolicy = rememberFullPlayerCompositionPolicy(
+        currentSongId = infrequentPlayerState.currentSong?.id,
+        currentSheetState = currentSheetContentState,
+        expansionFraction = playerContentExpansionFraction
+    )
+    val shouldRenderFullPlayer = fullPlayerCompositionPolicy.shouldRenderFullPlayer
+
+    // Battery: tell the PlaybackStateHolder when the slider-bearing UI is
+    // actually rendered. When it isn't (mini-player only), the position
+    // ticker drops from 250 ms to 1 s — slider precision isn't needed.
+    DisposableEffect(shouldRenderFullPlayer) {
+        playerViewModel.setSliderUiMounted(shouldRenderFullPlayer)
+        onDispose { playerViewModel.setSliderUiMounted(false) }
+    }
+
+    // Keep the mini player anchored to the latest collapsed target whenever
+    // the navbar height/visibility changes under it.
+    // ⚡ 也把「真实窗口尺寸」挂进 key：旋转（尤其横→竖→横）时容器高度会变，
+    //    但 sheet 状态本身可能没变化，这里必须重新同步一次，
+    //    否则旋转打断展开/收起动画后会停在半路，播放器就卡在错误的位置/尺寸。
+    LaunchedEffect(sheetCollapsedTargetY, sheetMotionController, windowSize) {
+        sheetMotionController.syncToExpansion(sheetCollapsedTargetY)
+    }
+
+    var previousSheetState by remember { mutableStateOf(currentSheetContentState) }
+    // ⚡ windowSize 同上：旋转后重新驱动一次展开/收起动画，避免停在中间状态
+    LaunchedEffect(showPlayerContentArea, currentSheetContentState, windowSize) {
+        val targetExpanded = showPlayerContentArea && currentSheetContentState == PlayerSheetState.EXPANDED
+        if (previousSheetState != currentSheetContentState) {
+            AdvancedPerformanceDiagnostics.recordEventIfEnabled(
+                type = AdvancedPerformanceDiagnostics.EventTypes.UI,
+                name = "player_sheet_state_changed"
+            ) {
+                mapOf(
+                    "from" to previousSheetState.name,
+                    "to" to currentSheetContentState.name,
+                    "showPlayerContentArea" to showPlayerContentArea.toString()
+                )
+            }
+        }
+        previousSheetState = currentSheetContentState
+
+        // 统一使用 sheetMotionController 驱动动画，避免多个动画源冲突导致跳变。
+        animatePlayerSheet(targetExpanded = targetExpanded && showPlayerContentArea)
+    }
+
+    // ⚡ 折叠态迷你条的宽度 / 对齐：与悬浮底栏共用同一份规则（见 rememberCollapsedBarWidth），
+    //    保证两条栏左右边缘对齐。规则：宽屏 + 横屏 → 最大 520dp 且右对齐（多余空间留在左侧
+    //    导航栏那一侧）；竖屏（含平板竖屏）不限宽、铺满。
+    val collapsedBarWidth = rememberCollapsedBarWidth()
+    val limitCollapsedWidth = collapsedBarWidth.limitWidth
+    val collapsedMaxWidthPx = remember(limitCollapsedWidth, density) {
+        if (limitCollapsedWidth) with(density) { collapsedBarWidth.maxWidth.toPx() } else 0f
+    }
+    val collapsedAlignEnd = collapsedBarWidth.alignEnd
+
+    // ⚡ 全胶囊样式：折叠态圆角取迷你条高度的一半（展开时插值回方角）
+    val miniPlayerStyleForShape by playerViewModel.miniPlayerStyle.collectAsStateWithLifecycle()
+    val collapsedCapsule = miniPlayerStyleForShape ==
+        com.theveloper.pixelplay.data.preferences.MiniPlayerStyle.EXPRESSIVE.name
+
+    val sheetVisualState = rememberSheetVisualState(
+        showPlayerContentArea = showPlayerContentArea,
+        collapsedStateHorizontalPadding = collapsedStateHorizontalPadding,
+        predictiveBackCollapseProgress = predictiveBackCollapseProgress,
+        predictiveBackSwipeEdge = predictiveBackSwipeEdge,
+        currentSheetContentState = currentSheetContentState,
+        playerContentExpansionFraction = playerContentExpansionFraction,
+        containerHeight = containerHeight,
+        currentSheetTranslationY = currentSheetTranslationY,
+        sheetCollapsedTargetY = sheetCollapsedTargetY,
+        navBarStyle = navBarStyle,
+        navBarCornerRadiusDp = miniPlayerCornerRadiusDp,
+        isNavBarHidden = isNavBarHidden,
+        isPlaying = infrequentPlayerState.isPlaying,
+        hasCurrentSong = infrequentPlayerState.currentSong != null,
+        swipeDismissProgress = swipeDismissProgress,
+        navRailPadding = navRailPadding,
+        isLandscape = isLandscape,
+        containerWidthPx = screenWidthPx,
+        collapsedMaxWidthPx = collapsedMaxWidthPx,
+        collapsedAlignEnd = collapsedAlignEnd,
+        collapsedCapsule = collapsedCapsule,
+        miniPlayerScrollShiftPxProvider = miniPlayerScrollShiftPxProvider
+    )
+    val currentBottomPadding = sheetVisualState.currentBottomPadding
+    val baseBottomPadding = sheetVisualState.baseBottomPadding
+    val playerContentAreaHeightPxProvider = sheetVisualState.playerContentAreaHeightPxProvider
+    val visualSheetTranslationYProvider = sheetVisualState.visualSheetTranslationYProvider
+    val sheetExtraShiftPxProvider = sheetVisualState.sheetExtraShiftPxProvider
+    val overallSheetTopCornerRadiusProvider = sheetVisualState.overallSheetTopCornerRadiusProvider
+    val playerContentActualBottomRadiusProvider = sheetVisualState.playerContentActualBottomRadiusProvider
+    val currentHorizontalPaddingStartPxProvider = sheetVisualState.currentHorizontalPaddingStartPxProvider
+    val currentHorizontalPaddingEndPxProvider = sheetVisualState.currentHorizontalPaddingEndPxProvider
+
+    val queueSheetState = rememberQueueSheetState(
+        scope = scope,
+        screenHeightPx = screenHeightPx,
+        density = density,
+        currentBottomPadding = currentBottomPadding,
+        showPlayerContentArea = showPlayerContentArea,
+        isPlayerFullyExpanded = isPlayerFullyExpanded
+    )
+    val showQueueSheet = queueSheetState.showQueueSheet
+    val allowQueueSheetInteraction = queueSheetState.allowQueueSheetInteraction
+    val queueSheetOffset = queueSheetState.queueSheetOffset
+    val queueSheetHeightPx = queueSheetState.queueSheetHeightPx
+    val queueHiddenOffsetPx = queueSheetState.queueHiddenOffsetPx
+    val queueSheetController = queueSheetState.queueSheetController
+    val onQueueSheetHeightPxChange = queueSheetState.onQueueSheetHeightPxChange
+
+    /* ⚡ 外部请求打开播放列表（在线歌单点击入队后）：展开播放器 + 打开队列 */
+    LaunchedEffect(playerViewModel) {
+        playerViewModel.openQueueRequest.collect { requestId ->
+            // StateFlow 在订阅瞬间会重放当前值，初值 0L 并非真实请求，
+            // 否则冷启动挂载本组件时会立刻展开全屏播放器（表现为一打开 App 就全屏）
+            if (requestId <= 0L) return@collect
+            playerViewModel.showPlayer()
+            playerViewModel.expandPlayerSheet()
+            delay(450L) // 等播放器展开动画过半，队列滑入更自然
+            queueSheetController.animate(true)
+        }
+    }
+
+    val castSheetState = rememberCastSheetState()
+    val sheetBackAndDragState = rememberSheetBackAndDragState(
+        showPlayerContentArea = showPlayerContentArea,
+        currentSheetContentState = currentSheetContentState
+    )
+    val canHandlePlayerBack by remember(
+        sheetBackAndDragState.predictiveBackEnabled,
+        showQueueSheet,
+        castSheetState.showCastSheet
+    ) {
+        derivedStateOf {
+            sheetBackAndDragState.predictiveBackEnabled &&
+                !showQueueSheet &&
+                !castSheetState.showCastSheet
+        }
+    }
+    val velocityTracker = remember { VelocityTracker() }
+    val sheetModalOverlayController = rememberSheetModalOverlayController(
+        scope = scope,
+        queueSheetController = queueSheetController,
+        animationDurationMs = ANIMATION_DURATION_MS,
+        onCollapsePlayerSheet = { playerViewModel.collapsePlayerSheet() }
+    )
+    val pendingSaveQueueOverlay = sheetModalOverlayController.pendingSaveQueueOverlay
+    val selectedSongForInfo = sheetModalOverlayController.selectedSongForInfo
+    val sheetActionHandlers = rememberSheetActionHandlers(
+        scope = scope,
+        navController = navController,
+        playerViewModel = playerViewModel,
+        sheetMotionController = sheetMotionController,
+        queueSheetController = queueSheetController,
+        sheetModalOverlayController = sheetModalOverlayController,
+        sheetCollapsedTargetY = sheetCollapsedTargetY
+    )
+
+    val hapticFeedback = LocalHapticFeedback.current
+    val miniDismissGestureHandler = rememberMiniPlayerDismissGestureHandler(
+        scope = scope,
+        density = density,
+        hapticFeedback = hapticFeedback,
+        offsetAnimatable = offsetAnimatable,
+        screenWidthPx = screenWidthPx,
+        onDismissPlaylistAndShowUndo = { playerViewModel.dismissPlaylistAndShowUndo() },
+        onDismissStarted = { playerViewModel.setMiniPlayerDismissing(true) }
+    )
+
+    QueueSheetRuntimeEffects(
+        queueSheetController = queueSheetController,
+        queueSheetOffset = queueSheetOffset,
+        queueHiddenOffsetPx = queueHiddenOffsetPx,
+        showQueueSheet = showQueueSheet,
+        allowQueueSheetInteraction = allowQueueSheetInteraction,
+        onTopEdgeReached = {
+            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
+    )
+
+    PlayerSheetPredictiveBackHandler(
+        enabled = canHandlePlayerBack,
+        playerViewModel = playerViewModel,
+        sheetCollapsedTargetY = sheetCollapsedTargetY,
+        sheetExpandedTargetY = sheetExpandedTargetY,
+        sheetMotionController = sheetMotionController,
+        animationDurationMs = ANIMATION_DURATION_MS,
+        onSwipeEdgeChanged = { playerViewModel.updatePredictiveBackSwipeEdge(it) },
+        registrationKey = currentBackStackEntry?.id
+    )
+
+    val queuePredictiveBackProgress = remember { Animatable(0f) }
+    var queuePredictiveBackSwipeEdge by remember { mutableStateOf<Int?>(null) }
+
+    val sheetOverlayState = rememberSheetOverlayState(
+        density = density,
+        showPlayerContentArea = showPlayerContentArea,
+        hideMiniPlayer = hideMiniPlayer,
+        isSheetExpanded = currentSheetContentState == PlayerSheetState.EXPANDED,
+        showQueueSheet = showQueueSheet,
+        isQueueCollapsing = queueSheetState.isCollapsing,
+        queueHiddenOffsetPx = queueHiddenOffsetPx,
+        screenHeightPx = screenHeightPx,
+        castSheetOpenFraction = castSheetState.castSheetOpenFraction,
+        queueSheetOffset = queueSheetOffset,
+        queuePredictiveBackProgress = queuePredictiveBackProgress
+    )
+    val internalIsKeyboardVisible = sheetOverlayState.internalIsKeyboardVisible
+    val actuallyShowSheetContent = sheetOverlayState.actuallyShowSheetContent
+    val isQueueVisible = sheetOverlayState.isQueueVisible
+    val bottomSheetOpenFraction = sheetOverlayState.bottomSheetOpenFraction
+    val queueScrimAlpha = sheetOverlayState.queueScrimAlpha
+    // ⚡ 队列内搜索框的展开状态由本层持有（而非 QueueBottomSheet 内部）：
+    //    键盘弹出时宿主按「键盘可见即撤下队列宿主」的门控工作（见下），
+    //    必须知道搜索框是否展开——否则点搜索框→键盘弹出→整个队列被卸载（闪一下且无法输入）。
+    var queueSearchExpanded by rememberSaveable { mutableStateOf(false) }
+    // ⚡ 粘性豁免：点「取消」后搜索框立即收起，但键盘收起动画期间
+    //    internalIsKeyboardVisible 仍为 true——若立刻放开豁免，宿主会在键盘收起动画
+    //    中途被误撤再闪一次。保持豁免直到键盘真正消失才复位。
+    var queueSearchKeyboardHold by remember { mutableStateOf(false) }
+    LaunchedEffect(queueSearchExpanded, internalIsKeyboardVisible) {
+        when {
+            queueSearchExpanded -> queueSearchKeyboardHold = true
+            !internalIsKeyboardVisible -> queueSearchKeyboardHold = false
+        }
+    }
+    val shouldRenderQueueHost = !internalIsKeyboardVisible ||
+        selectedSongForInfo != null ||
+        queueSearchKeyboardHold
+    val isQueueTelemetryActive = showQueueSheet
+
+    LaunchedEffect(showQueueSheet) {
+        playerViewModel.updateQueueSheetVisibility(showQueueSheet)
+    }
+    LaunchedEffect(castSheetState.showCastSheet) {
+        playerViewModel.updateCastSheetVisibility(castSheetState.showCastSheet)
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            playerViewModel.updateQueueSheetVisibility(false)
+            playerViewModel.updateCastSheetVisibility(false)
+        }
+    }
+
+    // ⚡ 从单一的、原子的主题状态容器中读取：activeColorSchemePair, albumArtUri 始终一致
+    //   不会出现"颜色变了但 URI 没变"或反之的中间状态
+    val albumThemeState by playerViewModel.albumArtThemeState.collectAsStateWithLifecycle()
+    val activePlayerSchemePair = albumThemeState.activeColorSchemePair
+    val themedAlbumArtUri = albumThemeState.albumArtUri
+    val isDarkTheme = LocalPixelPlayDarkTheme.current
+    val currentSong = infrequentPlayerState.currentSong
+    val sheetThemeState = rememberSheetThemeState(
+        activePlayerSchemePair = activePlayerSchemePair,
+        isDarkTheme = isDarkTheme,
+        playerThemePreference = playerThemePreference,
+        currentSong = currentSong,
+        themedAlbumArtUri = themedAlbumArtUri,
+        preparingSongId = preparingSongId,
+        systemColorScheme = MaterialTheme.colorScheme,
+        currentSheetState = currentSheetContentState,
+        playerContentExpansionFraction = playerContentExpansionFraction
+    )
+    val albumColorScheme = sheetThemeState.albumColorScheme
+    val miniPlayerScheme = sheetThemeState.miniPlayerScheme
+    val isPreparingPlayback = sheetThemeState.isPreparingPlayback
+    val miniReadyAlpha = sheetThemeState.miniReadyAlpha
+    val miniAppearScale = sheetThemeState.miniAppearScale
+    val playerAreaBackground = sheetThemeState.playerAreaBackground
+    // Elevation is only visible in the mini/collapsed state (expansion < 0.18).
+    // miniReadyAlpha fades the shadow in during the initial song-appear animation.
+    val isDragging = sheetBackAndDragState.isDragging
+    // 始终为 0.dp，移除无效的 derivedStateOf 避免不必要的重组
+    val visualCardShadowElevation = 0.dp
+
+    val sheetInteractionState = rememberSheetInteractionState(
+        scope = scope,
+        velocityTracker = velocityTracker,
+        sheetMotionController = sheetMotionController,
+        playerContentExpansionFraction = playerContentExpansionFraction,
+        currentSheetTranslationY = currentSheetTranslationY,
+        visualOvershootScaleY = visualOvershootScaleY,
+        sheetCollapsedTargetY = sheetCollapsedTargetY,
+        sheetExpandedTargetY = sheetExpandedTargetY,
+        miniPlayerContentHeightPx = miniPlayerContentHeightPx,
+        currentSheetContentState = currentSheetContentState,
+        showPlayerContentArea = showPlayerContentArea,
+        overallSheetTopCornerRadiusProvider = overallSheetTopCornerRadiusProvider,
+        playerContentActualBottomRadiusProvider = playerContentActualBottomRadiusProvider,
+        useSmoothCorners = useSmoothCorners,
+        isDragging = sheetBackAndDragState.isDragging,
+        isFloatingBottomBar = isFloatingBottomBar,
+        onAnimateSheet = { targetExpanded, animationSpec, initialVelocity ->
+            animatePlayerSheet(
+                targetExpanded = targetExpanded,
+                animationSpec = animationSpec,
+                initialVelocity = initialVelocity
+            )
+        },
+        onExpandSheetState = { playerViewModel.expandPlayerSheet() },
+        onCollapseSheetState = { playerViewModel.collapsePlayerSheet() },
+        onDraggingChange = sheetBackAndDragState.onDraggingChange,
+        onDraggingPlayerAreaChange = sheetBackAndDragState.onDraggingPlayerAreaChange,
+        onFloatingBottomBarCollapse = onFloatingBottomBarCollapse
+    )
+
+    if (!actuallyShowSheetContent) return
+
+    val playerSheetSemanticsDescription = remember(
+        currentSheetContentState,
+        infrequentPlayerState.currentSong?.title
+    ) {
+        "PixelPlay player sheet ${currentSheetContentState.name.lowercase()} " +
+            (infrequentPlayerState.currentSong?.title ?: "")
+    }
+
+    val miniHeightPx = with(density) { com.theveloper.pixelplay.presentation.components.MiniPlayerHeight.toPx() }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .layout { measurable, constraints ->
+                val translationY = visualSheetTranslationYProvider().roundToInt()
+                val overshoot = if (currentSheetContentState == PlayerSheetState.EXPANDED && !isDragging) {
+                    -translationY
+                } else {
+                    if (translationY < 0) -translationY else 0
+                }
+                val targetHeight = constraints.maxHeight + overshoot
+                val placeable = measurable.measure(
+                    constraints.copy(
+                        minHeight = targetHeight,
+                        maxHeight = targetHeight
+                    )
+                )
+                layout(constraints.maxWidth, constraints.maxHeight) {
+                    placeable.placeRelative(0, translationY)
+                }
+            }
+            // ⚡ 滚动隐藏底栏时的额外下移只在绘制阶段叠加（不参与测量/布局），
+            //   否则底栏收起动画期间整个播放器面板会逐帧重新布局 → 媒体库上滑卡顿。
+            .graphicsLayer {
+                translationY = sheetExtraShiftPxProvider()
+            },
+        shadowElevation = 0.dp,
+        color = Color.Transparent
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = currentBottomPadding)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                if (showPlayerContentArea) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .graphicsLayer {
+                                translationX = offsetAnimatable.value
+                                scaleX = miniAppearScale
+                                scaleY = visualOvershootScaleY.value * miniAppearScale
+                                alpha = miniReadyAlpha
+                                transformOrigin = TransformOrigin(0.5f, 1f)
+                            }
+                            // outerLayout:
+                            // Measures downstream chain with innerWidth and targetHeightPx.
+                            // Places child at startPaddingPx to center it horizontally.
+                            // Reports full screen width to parent to satisfy fillMaxWidth() constraints.
+                            .layout { measurable, constraints ->
+                                val targetHeightPx = playerContentAreaHeightPxProvider()
+                                    .toInt().coerceAtLeast(0)
+                                val rawStartPaddingPx = currentHorizontalPaddingStartPxProvider()
+                                    .toInt().coerceAtLeast(0)
+                                val rawEndPaddingPx = currentHorizontalPaddingEndPxProvider()
+                                    .toInt().coerceAtLeast(0)
+                                // ⚡ 兜底：折叠态水平内边距是「按窗口尺寸」算出来的，而这里用的是当前布局
+                                //    约束。旋转 / 分屏 / 从后台恢复时两者可能短暂不一致（窗口已按新方向算好
+                                //    平板限宽补偿，约束还是旧宽度），相减会把 innerWidth 压到接近 0 ——
+                                //    表现就是迷你条塌成一个小方块（用户反馈的「mini player 长度偶发 bug」）。
+                                //    这里给可用宽度兜底：折叠态至少保留 240dp（且不超过整宽），
+                                //    并同步收窄起始内边距，保证内容始终落在可视范围内。
+                                val minInnerWidth = minOf(
+                                    constraints.maxWidth,
+                                    with(density) { 240.dp.roundToPx() }
+                                )
+                                val innerWidth = (constraints.maxWidth - rawStartPaddingPx - rawEndPaddingPx)
+                                    .coerceAtLeast(minInnerWidth)
+                                val startPaddingPx = rawStartPaddingPx
+                                    .coerceAtMost((constraints.maxWidth - innerWidth).coerceAtLeast(0))
+
+                                val placeable = measurable.measure(
+                                    constraints.copy(
+                                        minWidth = innerWidth,
+                                        maxWidth = innerWidth,
+                                        minHeight = targetHeightPx,
+                                        maxHeight = targetHeightPx
+                                    )
+                                )
+                                layout(constraints.maxWidth, targetHeightPx) {
+                                    placeable.placeRelative(startPaddingPx, 0)
+                                }
+                            }
+                            // Always apply Modifier.shadow with the dynamic elevation
+                            // (0.dp renders nothing). Keeping the modifier chain
+                            // structurally stable avoids the costly relayout/redraw
+                            // restructure when the elevation crosses 0.dp during
+                            // expand/collapse or right after play/pause.
+                            // Using playerShadowOnlyShape (flat bottom corners) prevents
+                            // shadow leaks at the bottom-left/right corners of the mini player.
+                            .shadow(
+                                elevation = visualCardShadowElevation,
+                                shape = sheetInteractionState.playerShadowOnlyShape,
+                                clip = false
+                            )
+                            .background(
+                                color = playerAreaBackground,
+                                shape = sheetInteractionState.playerShadowShape
+                            )
+                            .clip(sheetInteractionState.playerShadowShape)
+                            // innerLayout:
+                            // Measures the actual player content with full screen height targetContentHeightPx
+                            // so that it can render correctly, while reporting targetHeightPx to the outer
+                            // clip/background/shadow so that they are perfectly constrained to the miniplayer card bounds.
+                            // During drag/animation, we measure at stable full-screen constraints to prevent jank.
+                            // ⚡ 恢复原版展开动画：fraction 一旦 >0 内容立即按全屏宽度测量并对齐屏幕左侧
+                            //    （遮罩/背景铺满全屏），mini 层在 0.5 前保持不透明、0.5 后淡出，
+                            //    由全屏的 full 层接管。不做宽度插值，避免"展开时遮罩未覆盖全屏"。
+                            .layout { measurable, constraints ->
+                                val targetContentHeightPx = containerHeight.roundToPx()
+                                val fraction = playerContentExpansionFraction.value
+                                val startPaddingPx = currentHorizontalPaddingStartPxProvider().toInt()
+                                val measureWidth = if (fraction > 0f) {
+                                    screenWidthPx.roundToInt()
+                                } else {
+                                    constraints.maxWidth
+                                }
+                                val placeable = measurable.measure(
+                                    constraints.copy(
+                                        minWidth = measureWidth,
+                                        maxWidth = measureWidth,
+                                        minHeight = targetContentHeightPx,
+                                        maxHeight = targetContentHeightPx
+                                    )
+                                )
+                                layout(constraints.maxWidth, constraints.maxHeight) {
+                                    val xOffset = if (fraction > 0f) -startPaddingPx else 0
+                                    placeable.placeRelative(xOffset, 0)
+                                }
+                            }
+                            .miniPlayerDismissHorizontalGesture(
+                                enabled = currentSheetContentState == PlayerSheetState.COLLAPSED,
+                                handler = miniDismissGestureHandler
+                            )
+                            .playerSheetVerticalDragGesture(
+                                enabled = sheetInteractionState.canDragSheet,
+                                handler = sheetInteractionState.sheetVerticalDragGestureHandler
+                            )
+                            .clickable(
+                                enabled = !isSheetAnimating && (tapBackgroundClosesPlayer || currentSheetContentState == PlayerSheetState.COLLAPSED),
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                // ⚡ 折叠状态点击：直接展开播放器
+                                //   展开状态点击背景：调用 togglePlayerSheetState() 关闭播放器
+                                //   isSheetAnimating 守卫：动画进行中忽略点击，防止快速点击导致卡住
+                                if (isSheetAnimating) return@clickable
+                                if (currentSheetContentState == PlayerSheetState.COLLAPSED) {
+                                    playerViewModel.expandPlayerSheet()
+                                } else if (tapBackgroundClosesPlayer) {
+                                    playerViewModel.togglePlayerSheetState()
+                                }
+                            }
+                            .semantics {
+                                contentDescription = playerSheetSemanticsDescription
+                            }
+                    ) {
+                        UnifiedPlayerMiniAndFullLayers(
+                            currentSong = infrequentPlayerState.currentSong,
+                            retainedSong = retainedSong,
+                            miniPlayerScheme = miniPlayerScheme,
+                            overallSheetTopCornerRadiusProvider = overallSheetTopCornerRadiusProvider,
+                            infrequentPlayerState = infrequentPlayerState,
+                            isCastConnecting = isCastConnecting,
+                            isPreparingPlayback = isPreparingPlayback,
+                            playerContentExpansionFraction = playerContentExpansionFraction,
+                            albumColorScheme = albumColorScheme,
+                            bottomSheetOpenFraction = bottomSheetOpenFraction,
+                            fullPlayerVisualState = fullPlayerVisualState,
+                            containerHeight = containerHeight,
+                            currentQueueSourceName = currentQueueSourceName,
+                            currentSheetContentState = currentSheetContentState,
+                            carouselStyle = carouselStyle,
+                            fullPlayerLoadingTweaks = fullPlayerLoadingTweaks,
+                            isSheetDragGestureActive = sheetBackAndDragState.isDraggingPlayerArea,
+                            playerViewModel = playerViewModel,
+                            currentPositionProvider = positionToDisplayProvider,
+                            isFavorite = isFavorite,
+                            currentHorizontalPaddingStartPxProvider = currentHorizontalPaddingStartPxProvider,
+                            currentHorizontalPaddingEndPxProvider = currentHorizontalPaddingEndPxProvider,
+                            shouldRenderFullPlayer = shouldRenderFullPlayer,
+                            onShowQueueClicked = sheetActionHandlers.openQueueSheet,
+                            onQueueDragStart = sheetActionHandlers.beginQueueDrag,
+                            onQueueDrag = sheetActionHandlers.dragQueueBy,
+                            onQueueRelease = sheetActionHandlers.endQueueDrag,
+                            onShowCastClicked = castSheetState.openCastSheet,
+                            // ⚡ 右下角省略号：复用已有的「队列 + 歌曲信息」宿主
+                            //   （selectedSongForInfo 一旦非空，宿主就会渲染 SongInfoBottomSheet，
+                            //    其编辑/分享/收藏/加入歌单等回调早已接好，无需重复接线）。
+                            //   「歌曲信息」入口直接落到信息卡片页（initialPage = 1）
+                            onShowSongInfo = {
+                                infrequentPlayerState.currentSong?.let { song ->
+                                    sheetActionHandlers.onShowPlayerSongInfo(song)
+                                }
+                            },
+                        )
+                    }
+                }
+
+                UnifiedPlayerPrewarmLayer(
+                    prewarmFullPlayer = prewarmFullPlayer && !shouldRenderFullPlayer,
+                    currentSong = infrequentPlayerState.currentSong,
+                    containerHeight = containerHeight,
+                    albumColorScheme = albumColorScheme,
+                    currentQueueSourceName = currentQueueSourceName,
+                    infrequentPlayerState = infrequentPlayerState,
+                    carouselStyle = carouselStyle,
+                    fullPlayerLoadingTweaks = fullPlayerLoadingTweaks,
+                    playerViewModel = playerViewModel,
+                    currentPositionProvider = positionToDisplayProvider,
+                    isCastConnecting = isCastConnecting,
+                    isFavorite = isFavorite,
+                    onShowQueueClicked = sheetActionHandlers.openQueueSheet,
+                    onQueueDragStart = sheetActionHandlers.beginQueueDrag,
+                    onQueueDrag = sheetActionHandlers.dragQueueBy,
+                    onQueueRelease = sheetActionHandlers.endQueueDrag
+                )
+            }
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                PredictiveBackHandler(enabled = isQueueVisible && !internalIsKeyboardVisible) { progressFlow ->
+                    try {
+                        progressFlow.collect { backEvent ->
+                            queuePredictiveBackSwipeEdge = backEvent.swipeEdge
+                            queuePredictiveBackProgress.snapTo(backEvent.progress)
+                        }
+                        scope.launch {
+                            launch {
+                                sheetActionHandlers.animateQueueSheet(false)
+                            }
+                            launch {
+                                queuePredictiveBackProgress.animateTo(
+                                    targetValue = 0f,
+                                    animationSpec = tween(ANIMATION_DURATION_MS)
+                                )
+                                queuePredictiveBackSwipeEdge = null
+                            }
+                        }
+                    } catch (_: kotlin.coroutines.cancellation.CancellationException) {
+                        scope.launch {
+                            queuePredictiveBackProgress.animateTo(
+                                targetValue = 0f,
+                                animationSpec = tween(ANIMATION_DURATION_MS)
+                            )
+                            queuePredictiveBackSwipeEdge = null
+                        }
+                    }
+                }
+            } else {
+                BackHandler(enabled = isQueueVisible && !internalIsKeyboardVisible) {
+                    sheetActionHandlers.animateQueueSheet(false)
+                }
+            }
+
+            val queuePredictiveBackSwipeEdgeState = rememberUpdatedState(queuePredictiveBackSwipeEdge)
+
+            UnifiedPlayerQueueAndSongInfoHost(
+                shouldRenderHost = shouldRenderQueueHost,
+                keepQueueSheetWarm = currentSheetContentState == PlayerSheetState.EXPANDED &&
+                    !internalIsKeyboardVisible,
+                isQueueTelemetryActive = isQueueTelemetryActive,
+                albumColorScheme = albumColorScheme,
+                queueScrimAlpha = queueScrimAlpha,
+                showQueueSheet = showQueueSheet,
+                isQueueCollapsing = queueSheetState.isCollapsing,
+                queueHiddenOffsetPx = queueHiddenOffsetPx,
+                queueSheetOffset = queueSheetOffset,
+                queueSheetHeightPx = queueSheetHeightPx,
+                onQueueSheetHeightPxChange = onQueueSheetHeightPxChange,
+                configurationResetKey = windowSize,
+                currentQueueSourceName = currentQueueSourceName,
+                infrequentPlayerState = infrequentPlayerState,
+                playerViewModel = playerViewModel,
+                selectedSongForInfo = selectedSongForInfo,
+                songInfoInitialPage = sheetModalOverlayController.songInfoInitialPage,
+                onSelectedSongForInfoChange = sheetActionHandlers.onSelectedSongForInfoChange,
+                onAnimateQueueSheet = sheetActionHandlers.animateQueueSheet,
+                onBeginQueueDrag = sheetActionHandlers.beginQueueDrag,
+                onDragQueueBy = sheetActionHandlers.dragQueueBy,
+                onEndQueueDrag = sheetActionHandlers.endQueueDrag,
+                onLaunchSaveQueueOverlay = sheetActionHandlers.onLaunchSaveQueueOverlay,
+                onNavigateToAlbum = sheetActionHandlers.onNavigateToAlbum,
+                onNavigateToArtist = sheetActionHandlers.onNavigateToArtist,
+                onNavigateToGenre = sheetActionHandlers.onNavigateToGenre,
+                onOpenNeteaseArtistHomepage = sheetActionHandlers.onOpenNeteaseArtistHomepage,
+                queuePredictiveBackProgress = queuePredictiveBackProgress,
+                queuePredictiveBackSwipeEdge = queuePredictiveBackSwipeEdgeState,
+                queueSearchExpanded = queueSearchExpanded,
+                onQueueSearchExpandedChange = { queueSearchExpanded = it }
+            )
+        }
+    }
+
+    UnifiedPlayerCastLayer(
+        showCastSheet = castSheetState.showCastSheet,
+        internalIsKeyboardVisible = internalIsKeyboardVisible,
+        albumColorScheme = albumColorScheme,
+        playerViewModel = playerViewModel,
+        onDismiss = castSheetState.dismissCastSheet,
+        onExpansionChanged = castSheetState.onCastExpansionChanged
+    )
+
+    UnifiedPlayerSaveQueueLayer(
+        pendingOverlay = pendingSaveQueueOverlay,
+        onDismissOverlay = { sheetModalOverlayController.dismissSaveQueueOverlay() }
+    )
+}

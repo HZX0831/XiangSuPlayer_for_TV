@@ -6,6 +6,12 @@ import com.cutedino.xiangsuplayer.core.model.AudioQuality
 
 object SessionManager {
     private const val PREFS_NAME = "tv_player_prefs"
+
+    var legacyHttpSourcesEnabled: Boolean
+        get() = ::prefs.isInitialized && prefs.getBoolean("legacy_http_sources", false)
+        set(value) {
+            if (::prefs.isInitialized) prefs.edit().putBoolean("legacy_http_sources", value).apply()
+        }
     private lateinit var prefs: SharedPreferences
 
     fun init(context: Context) {
@@ -58,6 +64,19 @@ object SessionManager {
         set(value) {
             if (::prefs.isInitialized) {
                 prefs.edit().putString("enabled_sound_sources", value.joinToString(",")).apply()
+            }
+        }
+
+    /** LX script source ids the user switched off; LX sources not listed here are enabled. */
+    var disabledLxSources: Set<String>
+        get() {
+            if (!::prefs.isInitialized) return emptySet()
+            return prefs.getString("disabled_lx_sources", "").orEmpty()
+                .split(",").filter { it.isNotBlank() }.toSet()
+        }
+        set(value) {
+            if (::prefs.isInitialized) {
+                prefs.edit().putString("disabled_lx_sources", value.joinToString(",")).apply()
             }
         }
 

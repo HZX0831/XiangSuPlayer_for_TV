@@ -4,16 +4,17 @@ import com.cutedino.xiangsuplayer.core.model.AudioQuality
 import com.cutedino.xiangsuplayer.core.model.LyricLine
 import com.cutedino.xiangsuplayer.core.model.Song
 import com.cutedino.xiangsuplayer.core.source.builtin.BuiltInSourceSearchApi
-import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.TimeSource
 
 /**
  * 跨平台直链换源适配器（酷我/酷狗/QQ/咪咕自动匹配）
@@ -64,11 +65,10 @@ object SoundSourceRepository {
         nianxinAdapter
     )
 
-    private val dynamicAdapters = CopyOnWriteArrayList<ISoundSourceAdapter>()
+    @Volatile private var dynamicAdapters = emptyList<ISoundSourceAdapter>()
 
     fun registerDynamicAdapters(adapters: List<ISoundSourceAdapter>) {
-        dynamicAdapters.clear()
-        dynamicAdapters.addAll(adapters)
+        dynamicAdapters = adapters.toList()
     }
 
     fun getAllAdapters(): List<ISoundSourceAdapter> = builtInAdapters + dynamicAdapters
@@ -80,7 +80,7 @@ object SoundSourceRepository {
     private const val COOLDOWN_DURATION_MS = 60_000L // 熔断 60 秒
 
     var activeMode: String = "auto_race"
-    var enabledSourceIds: Set<String> = setOf(
+    @Volatile var enabledSourceIds: Set<String> = setOf(
         "netease_native",
         "builtin_cross_platform",
         "ikun",
@@ -88,6 +88,9 @@ object SoundSourceRepository {
         "changqing",
         "nianxin"
     )
+
+    /** Installed LX scripts the user switched off (LX sources default to enabled). */
+    @Volatile var disabledLxSourceIds: Set<String> = emptySet()
 
     suspend fun search(
         query: String,
@@ -105,10 +108,11 @@ object SoundSourceRepository {
         sourceId: String,
         song: Song,
         quality: AudioQuality
-    ): Result<StreamResult> = withContext(Dispatchers.IO) {
-        val adapter = getAllAdapters().firstOrNull { it.sourceId == sourceId }
-            ?: return@withContext getStreamUrl(song, quality)
-        adapter.getStreamUrl(song, quality)
+    ): Result<ResolvedStream> = withContext(Dispatchers.IO) {
+        val adapter = getAllAdapters().firstOrNull { it.sourceId == sourceId && isEnabled(it, song) }
+            ?: return@withContext Result.failure(IllegalArgumentException("此曲目无法使用该音源"))
+        withTimeoutOrNull(RESOLVE_BUDGET_MS) { resolve(adapter, song, quality) }
+            ?: Result.failure(IllegalStateException("音源解析超时"))
     }
 
     /**
@@ -135,84 +139,53 @@ object SoundSourceRepository {
     /**
      * 多音源智能并行竞速与跨平台换源回退引擎
      */
-    suspend fun getStreamUrl(song: Song, quality: AudioQuality): Result<StreamResult> = withContext(Dispatchers.IO) {
-        // 如果歌曲本身来自非网易云平台 (tx/kg/kw/mg)，优先使用对应平台直链 + 落雪动态音源竞速
-        if (song.source.lowercase() !in listOf("wy", "netease", "netease_native")) {
-            val directRes = BuiltInSourceSearchApi.resolvePlatformStream(song, quality)
-            if (directRes.isSuccess) {
-                return@withContext directRes
-            }
+    private const val RESOLVE_BUDGET_MS = 4_500L
+
+    suspend fun getStreamUrl(
+        song: Song,
+        quality: AudioQuality,
+        preferredSourceId: String? = null
+    ): Result<ResolvedStream> = withContext(Dispatchers.IO) {
+        val started = TimeSource.Monotonic.markNow()
+        val enabled = getAllAdapters().filter { isEnabled(it, song) }
+        val preferred = enabled.firstOrNull { it.sourceId == preferredSourceId }
+        val first = preferred?.let { adapter ->
+            withTimeoutOrNull(1_500L) { resolve(adapter, song, quality).getOrNull() }
         }
-
-        coroutineScope {
-            val all = getAllAdapters()
-            val selectedAdapters = all.filter { it.sourceId in enabledSourceIds || it.sourceId.startsWith("lx_") }
-            val activeAdapters = if (selectedAdapters.isNotEmpty()) selectedAdapters else all
-
-            val healthyAdapters = activeAdapters
-                .filter { isAdapterHealthy(it.sourceId) }
-                .sortedByDescending { it.priority }
-
-            val candidateAdapters = if (healthyAdapters.isNotEmpty()) healthyAdapters else activeAdapters
-
-            val resultDeferred = CompletableDeferred<StreamResult>()
-            val trialCandidateRef = AtomicReference<StreamResult.Trial?>(null)
-            val jobs = mutableListOf<Job>()
-
-            candidateAdapters.forEach { adapter ->
-                val job = launch {
-                    try {
-                        val res = adapter.getStreamUrl(song, quality)
-                        val streamRes = res.getOrNull()
-                        if (streamRes != null) {
-                            when (streamRes) {
-                                is StreamResult.Full -> {
-                                    if (resultDeferred.complete(streamRes)) {
-                                        markAdapterSuccess(adapter.sourceId)
-                                    }
-                                }
-                                is StreamResult.Trial -> {
-                                    trialCandidateRef.compareAndSet(null, streamRes)
-                                }
-                            }
-                        } else {
-                            markAdapterFailure(adapter.sourceId)
-                        }
-                    } catch (_: Exception) {
-                        markAdapterFailure(adapter.sourceId)
-                    }
-                }
-                jobs.add(job)
-            }
-
-            // 4500ms 超时保底机制
-            val timeoutJob = launch {
-                delay(4500)
-                val trial = trialCandidateRef.get()
-                if (trial != null) {
-                    resultDeferred.complete(trial)
-                } else {
-                    resultDeferred.completeExceptionally(IllegalStateException("多音源解析全数超时 (4500ms)"))
-                }
-            }
-
-            try {
-                val finalResult = resultDeferred.await()
-                jobs.forEach { it.cancel() }
-                timeoutJob.cancel()
-                Result.success(finalResult)
-            } catch (e: Exception) {
-                jobs.forEach { it.cancel() }
-                timeoutJob.cancel()
-                val fallbackTrial = trialCandidateRef.get()
-                if (fallbackTrial != null) {
-                    Result.success(fallbackTrial)
-                } else {
-                    Result.failure(e)
-                }
-            }
+        if (first?.result is StreamResult.Full) return@withContext Result.success(first)
+        val candidates = enabled.filter { it != preferred }
+        val healthy = candidates.filter { isAdapterHealthy(it.sourceId) }
+        val racers = healthy.ifEmpty { candidates }.sortedByDescending { it.priority }
+        val remaining = (RESOLVE_BUDGET_MS - started.elapsedNow().inWholeMilliseconds).coerceAtLeast(0L)
+        val winner = raceStreams(racers, remaining, first) { adapter ->
+            val result = resolve(adapter, song, quality).getOrNull()
+            currentCoroutineContext().ensureActive()
+            if (result == null) markAdapterFailure(adapter.sourceId)
+            else markAdapterSuccess(adapter.sourceId)
+            result
         }
+        winner?.let { Result.success(it) }
+            ?: Result.failure(IllegalStateException("没有可靠的可播放音源"))
     }
+
+    private fun isEnabled(adapter: ISoundSourceAdapter, song: Song): Boolean =
+        adapter.supports(song) &&
+            SourceEnablement.isEnabled(adapter.sourceId, enabledSourceIds, disabledLxSourceIds) &&
+            (song.key.sourceId == "wy" || adapter == crossPlatformAdapter || SourceEnablement.isLx(adapter.sourceId))
+
+    private suspend fun resolve(adapter: ISoundSourceAdapter, song: Song, quality: AudioQuality): Result<ResolvedStream> =
+        try {
+            val result = adapter.getStreamUrl(song, quality).getOrThrow()
+            currentCoroutineContext().ensureActive()
+            require(SourceNetwork.allowsPlayback(result.streamUrl, allowLegacy = !SourceEnablement.isLx(adapter.sourceId))) {
+                "播放地址不符合音源安全设置"
+            }
+            Result.success(ResolvedStream(adapter.sourceId, quality, result))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Result.failure(failure)
+        }
 
     /**
      * 获取双语歌词（内置跨平台自动回退：歌曲源平台 -> 网易云双语 -> QQ音乐双语 -> 酷狗 -> 酷我）
@@ -222,9 +195,9 @@ object SoundSourceRepository {
             val multi = BuiltInSourceSearchApi.fetchMultiPlatformLyrics(song)
             if (multi.isNotEmpty()) {
                 multi
-            } else {
+            } else if (song.key.sourceId == "wy") {
                 neteaseAdapter.getLyrics(song.id).getOrDefault(emptyList())
-            }
+            } else emptyList()
         }
     }
 
@@ -244,5 +217,33 @@ object SoundSourceRepository {
         if (currentFailures >= MAX_FAILURE_THRESHOLD) {
             cooldownTimestamps[sourceId] = System.currentTimeMillis() + COOLDOWN_DURATION_MS
         }
+    }
+}
+
+
+internal suspend fun <T> raceStreams(
+    candidates: List<T>,
+    budgetMs: Long,
+    initialTrial: ResolvedStream? = null,
+    resolve: suspend (T) -> ResolvedStream?
+): ResolvedStream? = coroutineScope {
+    if (candidates.isEmpty() || budgetMs <= 0) return@coroutineScope initialTrial
+    val replies = Channel<ResolvedStream?>(candidates.size)
+    val jobs = candidates.map { candidate -> launch { replies.send(resolve(candidate)) } }
+    var trial = initialTrial
+    try {
+        withTimeoutOrNull(budgetMs) {
+            repeat(candidates.size) {
+                val result = replies.receive()
+                when (result?.result) {
+                    is StreamResult.Full -> return@withTimeoutOrNull result
+                    is StreamResult.Trial -> if (trial == null) trial = result
+                    null -> Unit
+                }
+            }
+            null
+        } ?: trial
+    } finally {
+        jobs.forEach { it.cancel() }
     }
 }

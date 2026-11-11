@@ -1,19 +1,22 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
 }
 
 android {
     namespace = "com.cutedino.xiangsuplayer"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.cutedino.xiangsuplayer"
         minSdk = 21
         targetSdk = 34
-        versionCode = 11
-        versionName = "2.1.0 PixelPlay TV"
+        versionCode = 12
+        versionName = "2.1.0 preview"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -34,16 +37,33 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
     buildFeatures {
-        viewBinding = true
         compose = true
         buildConfig = true
     }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.14"
+    lint {
+        // These detectors from the pinned Compose BOM crash on Kotlin 2.2 metadata.
+        disable += setOf("StateFlowValueCalledInComposition", "CoroutineCreationDuringComposition")
+    }
+    testOptions {
+        unitTests {
+            // Robolectric needs merged resources/manifest (ComponentActivity from ui-test-manifest)
+            isIncludeAndroidResources = true
+            all {
+                // Maven Central returns 403 here; fetch Robolectric's android-all jars from the Aliyun mirror
+                it.systemProperty("robolectric.dependency.repo.url", "https://maven.aliyun.com/repository/central")
+                providers.gradleProperty("robolectricDependencyDir").orNull?.let { localSdkJars ->
+                    it.systemProperty("robolectric.offline", "true")
+                    it.systemProperty("robolectric.dependency.dir", localSdkJars)
+                }
+            }
+        }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 
@@ -61,7 +81,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
-    implementation("androidx.media:media:1.7.0")
 
     // Jetpack Compose & Material 3 Expressive for TV
     val composeBom = platform("androidx.compose:compose-bom:2024.06.00")
@@ -79,20 +98,23 @@ dependencies {
     implementation("androidx.compose.runtime:runtime-livedata")
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
-    // Leanback for TV
+    // Shared TV resources still reference Leanback colors and dimensions.
     implementation("androidx.leanback:leanback:1.0.0")
 
     // ExoPlayer
-    implementation("com.google.android.exoplayer:exoplayer-core:2.18.7")
-    implementation("com.google.android.exoplayer:exoplayer-ui:2.18.7")
+    val media3Version = "1.8.0"
+    implementation("androidx.media3:media3-exoplayer:$media3Version")
+    implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
+    implementation("androidx.media3:media3-session:$media3Version")
+    implementation("androidx.media3:media3-datasource-okhttp:$media3Version")
 
     // Room Database
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    ksp("androidx.room:room-compiler:2.6.1")
+    implementation("androidx.room:room-runtime:2.7.2")
+    implementation("androidx.room:room-ktx:2.7.2")
+    ksp("androidx.room:room-compiler:2.7.2")
 
     // Network & Image
-    implementation("com.squareup.okhttp3:okhttp:3.14.9")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("io.coil-kt:coil:2.5.0")
     implementation("io.coil-kt:coil-compose:2.5.0")
     implementation("com.google.zxing:core:3.5.3")
@@ -103,4 +125,20 @@ dependencies {
 
     // Gson
     implementation("com.google.code.gson:gson:2.10.1")
+
+    androidTestImplementation(composeBom)
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test:runner:1.5.0")
+
+    // JVM UI tests (Robolectric + Compose) for D-pad focus regressions
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.17")
+    testImplementation(composeBom)
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }

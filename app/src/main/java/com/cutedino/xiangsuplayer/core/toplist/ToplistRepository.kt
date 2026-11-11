@@ -8,6 +8,9 @@ import net.moriafly.ncm.NcmApi
 import net.moriafly.ncm.ncmList
 import net.moriafly.ncm.ncmObj
 import okhttp3.MediaType.Companion.toMediaType
+import com.cutedino.xiangsuplayer.core.source.SourceNetwork
+import kotlinx.coroutines.CancellationException
+import net.moriafly.ncm.readResponse
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -26,7 +29,7 @@ object ToplistRepository {
         "http://mobilecdnbj.kugou.com/api/v3/rank/song?version=9108&ranktype=1&plat=0&pagesize=100&area_code=1&page=1&rankid=%s&with_res_tag=0&show_portrait_mv=1"
 
     private val httpClient: OkHttpClient by lazy {
-        OkHttpClient.Builder()
+        SourceNetwork.configure(OkHttpClient.Builder())
             .connectTimeout(6, TimeUnit.SECONDS)
             .readTimeout(8, TimeUnit.SECONDS)
             .build()
@@ -66,7 +69,7 @@ object ToplistRepository {
         return tracks.mapNotNull { (it as? Map<String, Any?>)?.toSong()?.copy(source = "wy") }
     }
 
-    private fun fetchTxBoard(entry: ToplistCatalog.Entry): List<Song> {
+    private suspend fun fetchTxBoard(entry: ToplistCatalog.Entry): List<Song> {
         val period = fetchTxPeriod(entry.bangid)
         val payload = JSONObject()
             .put(
@@ -139,7 +142,7 @@ object ToplistRepository {
         return result
     }
 
-    private fun fetchTxPeriod(bangid: String): String {
+    private suspend fun fetchTxPeriod(bangid: String): String {
         return try {
             val req = Request.Builder().url(TX_PERIOD_URL).build()
             val html = execute(req) ?: return ""
@@ -155,7 +158,7 @@ object ToplistRepository {
         }
     }
 
-    private fun fetchKgBoard(entry: ToplistCatalog.Entry): List<Song> {
+    private suspend fun fetchKgBoard(entry: ToplistCatalog.Entry): List<Song> {
         val req = Request.Builder().url(String.format(KG_LIST_URL, entry.bangid)).build()
         val body = execute(req) ?: return emptyList()
         val info = JSONObject(body).optJSONObject("data")?.optJSONArray("info") ?: return emptyList()
@@ -195,12 +198,14 @@ object ToplistRepository {
         return result
     }
 
-    private fun execute(request: Request): String? {
+    private suspend fun execute(request: Request): String? {
         return try {
-            httpClient.newCall(request).execute().use { resp ->
+            httpClient.newCall(request).readResponse { resp ->
                 if (resp.isSuccessful) resp.body?.string() else null
             }
-        } catch (_: Exception) {
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+            } catch (_: Exception) {
             null
         }
     }

@@ -1,12 +1,11 @@
 package com.cutedino.xiangsuplayer.data.db
 
 import androidx.room.Entity
-import androidx.room.PrimaryKey
 import com.cutedino.xiangsuplayer.core.model.Song
 
-@Entity(tableName = "favorite_songs")
+@Entity(tableName = "favorite_songs", primaryKeys = ["sourceId", "id"])
 data class SongEntity(
-    @PrimaryKey val id: String,
+    val id: String,
     val title: String,
     val artist: String,
     val album: String,
@@ -31,9 +30,9 @@ data class SongEntity(
     )
 }
 
-@Entity(tableName = "play_history")
+@Entity(tableName = "play_history", primaryKeys = ["sourceId", "id"])
 data class PlayHistoryEntity(
-    @PrimaryKey val id: String,
+    val id: String,
     val title: String,
     val artist: String,
     val album: String,
@@ -64,7 +63,7 @@ fun Song.toFavoriteEntity(): SongEntity = SongEntity(
     album = album,
     coverUrl = coverUrl,
     durationMs = durationMs,
-    sourceId = source,
+    sourceId = key.sourceId,
     songmid = songmid,
     hash = hash,
     addedAtMs = System.currentTimeMillis()
@@ -77,7 +76,7 @@ fun Song.toHistoryEntity(): PlayHistoryEntity = PlayHistoryEntity(
     album = album,
     coverUrl = coverUrl,
     durationMs = durationMs,
-    sourceId = source,
+    sourceId = key.sourceId,
     songmid = songmid,
     hash = hash,
     playedAtMs = System.currentTimeMillis()

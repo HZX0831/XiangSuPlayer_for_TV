@@ -4,6 +4,20 @@ import net.moriafly.ncm.ncmList
 import net.moriafly.ncm.ncmLong
 import net.moriafly.ncm.ncmObj
 import net.moriafly.ncm.ncmString
+import java.util.Locale
+
+data class SongKey(val sourceId: String, val trackId: String) {
+    companion object {
+        fun canonicalSource(source: String): String = when (val id = source.trim().lowercase(Locale.ROOT)) {
+            "netease", "netease_native" -> "wy"
+            "qq" -> "tx"
+            "kugou" -> "kg"
+            "kuwo" -> "kw"
+            "migu" -> "mg"
+            else -> id
+        }
+    }
+}
 
 data class Song(
     val id: String,
@@ -16,7 +30,9 @@ data class Song(
     val songmid: String = "",
     val hash: String = "",
     val isFavorite: Boolean = false
-)
+) {
+    val key: SongKey get() = SongKey(SongKey.canonicalSource(source), id)
+}
 
 @Suppress("UNCHECKED_CAST")
 fun Map<String, Any?>.toSong(): Song {

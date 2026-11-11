@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="sharedpref" path="ncm_session.xml" />
+    <exclude domain="sharedpref" path="tv_player_prefs.xml" />
+    <exclude domain="sharedpref" path="webdav_credentials.xml" />
+    <exclude domain="sharedpref" path="folder_libraries.xml" />
+</full-backup-content>

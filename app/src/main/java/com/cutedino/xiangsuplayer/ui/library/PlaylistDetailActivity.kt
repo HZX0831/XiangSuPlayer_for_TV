@@ -1,33 +1,40 @@
 package com.cutedino.xiangsuplayer.ui.library
 
+import com.cutedino.xiangsuplayer.ui.main.TvConnectedMiniPlayer
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+
+import com.cutedino.xiangsuplayer.ui.theme.rememberTvWindowSpec
+
+import com.cutedino.xiangsuplayer.R
+import androidx.compose.ui.res.stringResource
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import com.cutedino.xiangsuplayer.ui.components.TvTextAction
+import com.cutedino.xiangsuplayer.ui.main.TvCompactSongCard
+import com.cutedino.xiangsuplayer.ui.theme.LocalTvFocusMemory
+import com.cutedino.xiangsuplayer.ui.theme.TvFocusMemory
+import com.cutedino.xiangsuplayer.ui.theme.tvFocusGroup
 import android.content.Intent
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,13 +48,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.cutedino.xiangsuplayer.core.audio.PlayMode
 import com.cutedino.xiangsuplayer.core.audio.PlayerController
@@ -56,21 +59,16 @@ import com.cutedino.xiangsuplayer.core.model.toSong
 import com.cutedino.xiangsuplayer.core.toplist.ToplistCatalog
 import com.cutedino.xiangsuplayer.core.toplist.ToplistRepository
 import com.cutedino.xiangsuplayer.data.auth.MultiPlatformAccountManager
-import com.cutedino.xiangsuplayer.data.session.SessionManager
 import com.cutedino.xiangsuplayer.ui.components.SongPlatformBadge
-import com.cutedino.xiangsuplayer.ui.components.TvFloatingMiniPlayer
-import com.cutedino.xiangsuplayer.ui.components.TvImmersiveBackdrop
+import com.cutedino.xiangsuplayer.ui.components.TvMiniPlayer
 import com.cutedino.xiangsuplayer.ui.player.PlayerActivity
-import com.cutedino.xiangsuplayer.ui.theme.PixelPlayLightPurple
-import com.cutedino.xiangsuplayer.ui.theme.PixelPlayPurpleDark
-import com.cutedino.xiangsuplayer.ui.theme.PixelPlaySurfaceVariant
 import com.cutedino.xiangsuplayer.ui.theme.PixelPlayTvTheme
-import com.cutedino.xiangsuplayer.ui.theme.tvFocusableCard
-import com.cutedino.xiangsuplayer.ui.theme.tvPillFocusable
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import net.moriafly.ncm.NcmApi
 import net.moriafly.ncm.ncmList
+import net.moriafly.ncm.ncmLong
 import net.moriafly.ncm.ncmObj
 
 class PlaylistDetailActivity : ComponentActivity() {
@@ -83,8 +81,7 @@ class PlaylistDetailActivity : ComponentActivity() {
         val playlistSource = intent.getStringExtra("EXTRA_PLAYLIST_SOURCE") ?: "wy"
 
         setContent {
-            val currentSong by PlayerController.currentSong.observeAsState()
-            PixelPlayTvTheme(coverUrl = currentSong?.coverUrl ?: playlistCover) {
+            PixelPlayTvTheme {
                 TvPlaylistDetailScreen(
                     playlistId = playlistId,
                     playlistName = playlistName,
@@ -109,286 +106,158 @@ private fun TvPlaylistDetailScreen(
     onBack: () -> Unit,
     onOpenPlayer: () -> Unit
 ) {
-    val context = LocalContext.current
     val currentSong by PlayerController.currentSong.observeAsState()
-    val isPlaying by PlayerController.isPlaying.observeAsState(false)
-    val playMode by PlayerController.playMode.observeAsState(PlayMode.SEQUENCE)
-    val pos by PlayerController.currentPosition.collectAsState()
-    val dur by PlayerController.duration.collectAsState()
-    val streamResult by PlayerController.activeStreamResult.collectAsState()
 
-    var songs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var songs by remember(playlistId) { mutableStateOf<List<Song>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var retry by remember { mutableStateOf(0) }
+    var total by remember(playlistId) { mutableStateOf(0) }
 
-    LaunchedEffect(playlistId) {
+    LaunchedEffect(playlistId, retry) {
         isLoading = true
-        songs = withContext(Dispatchers.IO) {
+        error = null
+        try {
             when {
                 playlistId.startsWith("tx_") -> {
-                    MultiPlatformAccountManager.fetchQqPlaylistSongs(playlistId)
+                    songs = MultiPlatformAccountManager.fetchQqPlaylistSongs(playlistId)
+                    total = songs.size
                 }
                 playlistId.startsWith("kg_board_") -> {
                     val bangid = playlistId.removePrefix("kg_board_")
                     val entry = ToplistCatalog.Entry(playlistId, playlistName, bangid, "kg")
-                    ToplistRepository.fetchBoardSongs(entry).getOrDefault(emptyList())
+                    songs = ToplistRepository.fetchBoardSongs(entry).getOrThrow()
+                    total = songs.size
                 }
                 else -> {
+                    val detail = NcmApi.playlistDetail(playlistId.removePrefix("wy_")).getOrThrow()
+                    val playlist = detail.ncmObj("playlist")
+                    check(playlist.isNotEmpty()) { "未收到歌单数据" }
+                    val known = (songs + parsePlaylistSongs(playlist.ncmList("tracks"))).associateBy { it.id }.toMutableMap()
+                    parsePlaylistSongs(detail.ncmObj("_songs_detail").ncmList("songs")).forEach { known[it.id] = it }
                     @Suppress("UNCHECKED_CAST")
-                    val trackList = NcmApi.playlistDetail(playlistId.removePrefix("wy_"))
-                        .getOrNull()
-                        ?.ncmObj("playlist")
-                        ?.ncmList("tracks")
-                        .orEmpty()
-                    trackList.mapNotNull { (it as? Map<String, Any?>)?.toSong()?.copy(source = "wy") }
+                    val ids = playlist.ncmList("trackIds").mapNotNull {
+                        (it as? Map<String, Any?>)?.ncmLong("id")?.takeIf { id -> id > 0 }?.toString()
+                    }.ifEmpty { known.keys.toList() }
+                    total = maxOf(ids.size, playlist.ncmLong("trackCount").toInt())
+                    songs = ids.mapNotNull(known::get)
+                    for (page in ids.filterNot(known::containsKey).distinct().chunked(100)) {
+                        parsePlaylistSongs(NcmApi.songDetail(page).getOrThrow().ncmList("songs"))
+                            .forEach { known[it.id] = it }
+                        songs = ids.mapNotNull(known::get)
+                    }
+                    if (songs.size < total) error = "部分曲目不可用，可重试"
                 }
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            error = "歌单加载失败，请重试"
+        } finally {
+            isLoading = false
         }
-        isLoading = false
     }
 
-    val progress = if (dur > 0L) (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f) else 0f
+    val spec = rememberTvWindowSpec()
+    val header = remember { TvFocusMemory() }
+    val tracks = remember { TvFocusMemory() }
+    val mini = remember { TvFocusMemory() }
+    val backFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { backFocus.requestFocus() }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        TvImmersiveBackdrop(
-            coverUrl = currentSong?.coverUrl ?: playlistCover,
-            useWallpaper = SessionManager.useWallpaperBackground,
-            wallpaperUrl = SessionManager.customWallpaperUrl,
-            wallpaperOpacityPercent = SessionManager.wallpaperOpacityPercent
-        )
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 36.dp, vertical = 20.dp)
-        ) {
-            // 顶部歌单信息横幅
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+    Column(
+        Modifier.fillMaxSize().padding(horizontal = spec.horizontalPadding, vertical = spec.verticalPadding),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        CompositionLocalProvider(LocalTvFocusMemory provides header) {
+            Column(
+                Modifier.fillMaxWidth().tvFocusGroup { direction ->
+                    if (direction == FocusDirection.Down) tracks.preferred() ?: mini.preferred() else null
+                },
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Row(
+                    Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(18.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    var backFocused by remember { mutableStateOf(false) }
-                    Row(
-                        modifier = Modifier
-                            .tvPillFocusable(
-                                onFocusChanged = { backFocused = it },
-                                onClick = onBack
-                            )
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "返回",
-                            tint = if (backFocused) PixelPlayPurpleDark else Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = "返回",
-                            color = if (backFocused) PixelPlayPurpleDark else Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
+                    TvTextAction("返回", Modifier.focusRequester(backFocus), onClick = onBack)
                     if (playlistCover.isNotBlank()) {
                         AsyncImage(
-                            model = playlistCover,
-                            contentDescription = playlistName,
+                            playlistCover,
+                            contentDescription = null,
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .size(68.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(PixelPlaySurfaceVariant)
+                            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(10.dp))
                         )
                     }
-
-                    Column {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = playlistName,
-                                color = Color.White,
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            SongPlatformBadge(source = playlistSource)
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "共 ${songs.size} 首曲目 · 按遥控器确认键即刻播放",
-                            color = PixelPlayLightPurple,
-                            fontSize = 13.sp
-                        )
+                    Column(Modifier.weight(1f)) {
+                        Text(playlistName, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("已加载 ${songs.size} / $total 首", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    SongPlatformBadge(source = playlistSource)
+                    if (error != null && songs.isNotEmpty()) TvTextAction(stringResource(R.string.tv_playlist_retry_missing)) { retry++ }
                 }
+                TvPlaylistBatchActions(songs, total, onPlay = { snapshot -> PlayerController.playSong(snapshot.first(), snapshot) })
 
-                // 右侧：播放全部 & 随机播放
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    var playAllFocused by remember { mutableStateOf(false) }
-                    Row(
-                        modifier = Modifier
-                            .tvPillFocusable(
-                                isSelected = true,
-                                onFocusChanged = { playAllFocused = it },
-                                onClick = {
-                                    if (songs.isNotEmpty()) {
-                                        PlayerController.playSong(songs.first(), songs)
-                                        Toast.makeText(context, "开始播放全部 (${songs.size} 首)", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            )
-                            .padding(horizontal = 20.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = null,
-                            tint = if (playAllFocused) PixelPlayPurpleDark else Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Text(
-                            text = "播放全部",
-                            color = if (playAllFocused) PixelPlayPurpleDark else Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    var shuffleFocused by remember { mutableStateOf(false) }
-                    Row(
-                        modifier = Modifier
-                            .tvPillFocusable(
-                                onFocusChanged = { shuffleFocused = it },
-                                onClick = {
-                                    if (songs.isNotEmpty()) {
-                                        val shuffled = songs.shuffled()
-                                        PlayerController.playSong(shuffled.first(), shuffled)
-                                        Toast.makeText(context, "已开启随机播放", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            )
-                            .padding(horizontal = 18.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Shuffle,
-                            contentDescription = null,
-                            tint = if (shuffleFocused) PixelPlayPurpleDark else Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = "随机漫游",
-                            color = if (shuffleFocused) PixelPlayPurpleDark else Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
             }
+        }
 
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // 歌曲网格列表
-            Box(modifier = Modifier.weight(1f)) {
-                if (isLoading) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                    }
-                } else if (songs.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("歌单暂无歌曲", color = PixelPlayLightPurple, fontSize = 16.sp)
-                    }
-                } else {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(3),
+        Box(
+            Modifier.weight(1f).fillMaxWidth().tvFocusGroup { direction ->
+                when (direction) {
+                    FocusDirection.Up -> header.preferred()
+                    FocusDirection.Down -> mini.preferred()
+                    else -> null
+                }
+            },
+            contentAlignment = Alignment.Center
+        ) {
+            CompositionLocalProvider(LocalTvFocusMemory provides tracks) {
+                when {
+                    isLoading && songs.isEmpty() -> CircularProgressIndicator()
+                    error != null && songs.isEmpty() -> TvTextAction(error.orEmpty()) { retry++ }
+                    songs.isEmpty() -> Text("歌单暂无歌曲", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    else -> LazyVerticalGrid(
+                        columns = GridCells.Adaptive(320.dp),
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        contentPadding = PaddingValues(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        itemsIndexed(songs, key = { idx, s -> "${s.id}_$idx" }) { index, song ->
-                            val isCurrent = currentSong?.id == song.id
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .tvFocusableCard(
-                                        scaleFocused = 1.03f,
-                                        shape = RoundedCornerShape(16.dp),
-                                        onClick = {
-                                            PlayerController.playSong(song, songs)
-                                        }
-                                    )
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Text(
-                                    text = String.format("%02d", index + 1),
-                                    color = if (isCurrent) MaterialTheme.colorScheme.primary else PixelPlayLightPurple.copy(alpha = 0.6f),
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.width(24.dp)
-                                )
-
-                                AsyncImage(
-                                    model = song.coverUrl,
-                                    contentDescription = song.title,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(PixelPlaySurfaceVariant)
-                                )
-
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = song.title,
-                                        color = if (isCurrent) MaterialTheme.colorScheme.primary else Color.White,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Spacer(modifier = Modifier.height(3.dp))
-                                    Text(
-                                        text = "${song.artist} · ${song.album}",
-                                        color = PixelPlayLightPurple,
-                                        fontSize = 12.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
+                        itemsIndexed(songs, key = { index, song -> "${song.source}:${song.id}:$index" }) { index, song ->
+                            TvCompactSongCard(song, rank = index + 1, isCurrent = currentSong?.key == song.key) { PlayerController.playSong(song, songs) }
                         }
                     }
                 }
             }
+        }
 
-            // 底部悬浮胶囊 MiniPlayer
-            TvFloatingMiniPlayer(
-                currentSong = currentSong,
-                isPlaying = isPlaying,
-                playMode = playMode,
-                progress = progress,
-                streamResult = streamResult,
-                onTogglePlayPause = { PlayerController.togglePlayPause() },
-                onPlayNext = { PlayerController.playNext() },
-                onPlayPrev = { PlayerController.playPrevious() },
-                onTogglePlayMode = { PlayerController.togglePlayMode() },
-                onOpenFullPlayer = onOpenPlayer
-            )
+        CompositionLocalProvider(LocalTvFocusMemory provides mini) {
+            TvConnectedMiniPlayer(onOpenPlayer, Modifier.tvFocusGroup { direction ->
+                if (direction == FocusDirection.Up) tracks.preferred() ?: header.preferred() else null
+            })
         }
     }
+}
+
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun TvPlaylistBatchActions(songs: List<Song>, total: Int, onPlay: (List<Song>) -> Unit) {
+    if (songs.isEmpty()) return
+    val partial = total > songs.size
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        TvTextAction(if (partial) stringResource(R.string.tv_play_loaded, songs.size) else stringResource(R.string.tv_play_all)) {
+            onPlay(songs.toList())
+        }
+        TvTextAction(stringResource(if (partial) R.string.tv_shuffle_loaded else R.string.tv_shuffle_all)) {
+            onPlay(songs.shuffled())
+        }
+    }
+}
+
+
+@Suppress("UNCHECKED_CAST")
+private fun parsePlaylistSongs(raw: List<*>): List<Song> = raw.mapNotNull {
+    (it as? Map<String, Any?>)?.toSong()?.takeIf { song -> song.id != "0" }
 }

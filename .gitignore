@@ -1,5 +1,6 @@
 # Gradle & Build
 .gradle/
+.kotlin/
 **/build/
 build/
 app/release/
@@ -14,3 +15,21 @@ local.properties
 *.log
 .artifacts/
 decompiled_output/
+
+# Local backups, toolchains and the retired nested checkout
+banked-*
+/backend-review-*/
+.tooling/
+
+# Local signing material and generated distributables
+keystore.properties
+signing.properties
+*.jks
+*.keystore
+*.p12
+*.apk
+*.aab
+*.idsig
+
+# Keep reviewed verification logs alongside the screenshots
+!docs/design/implementation/**/*.log

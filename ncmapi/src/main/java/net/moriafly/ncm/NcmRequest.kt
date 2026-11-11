@@ -3,19 +3,23 @@
 package net.moriafly.ncm
 
 import android.util.Base64
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
-import java.net.HttpURLConnection
 import java.net.Proxy
 import java.net.URL
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPInputStream
 import java.util.zip.InflaterInputStream
-import javax.net.ssl.HttpsURLConnection
 import kotlin.random.Random
 
 /**
@@ -91,6 +95,7 @@ object NcmRequest {
             if (anonymousReady || anonymousRegistering) return
             anonymousRegistering = true
         }
+        var attempted = true
         try {
             val devId = randomHex(52).uppercase()
             val username = Base64.encodeToString(
@@ -110,6 +115,7 @@ object NcmRequest {
                 accept = "*/*",
             )
             val raw = http("POST", target, headers, body, sess?.proxy)
+            if (raw.code !in 200..299) return
             raw.setCookies.forEach { rawCookie ->
                 val head = rawCookie.split(';').firstOrNull()?.trim() ?: return@forEach
                 val idx = head.indexOf('=')
@@ -118,10 +124,15 @@ object NcmRequest {
                 }
             }
             if (raw.setCookies.isNotEmpty()) sess?.merge(raw.setCookies)
-        } catch (_: Throwable) {
+        } catch (cancelled: CancellationException) {
+            attempted = false
+            throw cancelled
+        } catch (_: Exception) {
         } finally {
-            anonymousRegistering = false
-            anonymousReady = true
+            synchronized(anonymousLock) {
+                anonymousReady = attempted
+                anonymousRegistering = false
+            }
         }
     }
 
@@ -165,6 +176,11 @@ object NcmRequest {
 
     private const val CONNECT_TIMEOUT_MS = 15_000
     private const val READ_TIMEOUT_MS = 30_000
+    private val client = OkHttpClient.Builder()
+        .followRedirects(false)
+        .connectTimeout(CONNECT_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
+        .readTimeout(READ_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
+        .build()
 
     const val WY_YX_BASE_URL = "https://music.163.com"
     const val WY_INTERFACE_EAPI_BASE_URL = "https://interface3.music.163.com"
@@ -177,6 +193,8 @@ object NcmRequest {
         url: String? = null,
     ): Result<NcmResponse> = withContext(Dispatchers.IO) {
         runCatching {
+            val target = url ?: buildWeapiUrl(path)
+            require(NcmEndpoint.acceptsSession(URL(target))) { "Untrusted NetEase endpoint" }
             val sess = NcmSession.INSTANCE
             ensureAnonymousToken(sess)
             val osValue = sess?.os?.takeIf { it.isNotBlank() } ?: "pc"
@@ -191,7 +209,6 @@ object NcmRequest {
             if (csrf.isNotBlank()) enriched["csrf_token"] = csrf
 
             val encrypted = NcmCrypto.weapi(enriched)
-            val target = url ?: buildWeapiUrl(path)
             val body = encrypted.toFormBody().toByteArray(Charsets.UTF_8)
             val headers = buildHeaders(
                 host = URL(target).host,
@@ -205,7 +222,7 @@ object NcmRequest {
             )
 
             val raw = http("POST", target, headers, body, sess?.proxy)
-            handleRawResponse(raw, path, sess, isEapi = false)
+            handleRawResponse(raw, URL(target), path, sess, isEapi = false)
         }
     }
 
@@ -216,10 +233,11 @@ object NcmRequest {
         url: String? = null,
     ): Result<NcmResponse> = withContext(Dispatchers.IO) {
         runCatching {
+            val fullUrl = url ?: buildEapiUrl(path)
+            require(NcmEndpoint.acceptsSession(URL(fullUrl))) { "Untrusted NetEase endpoint" }
             val sess = NcmSession.INSTANCE
             ensureAnonymousToken(sess)
             val osEnum = OS.ANDROID
-            val fullUrl = url ?: buildEapiUrl(path)
             val encrypted = NcmCrypto.eapi(path, params)
             val body = encrypted.toFormBody().toByteArray(Charsets.UTF_8)
             val headers = buildHeaders(
@@ -232,7 +250,7 @@ object NcmRequest {
                 accept = "*/*",
             )
             val raw = http("POST", fullUrl, headers, body, sess?.proxy)
-            handleRawResponse(raw, path, sess, isEapi = true)
+            handleRawResponse(raw, URL(fullUrl), path, sess, isEapi = true)
         }
     }
 
@@ -242,9 +260,10 @@ object NcmRequest {
         url: String? = null,
     ): Result<NcmResponse> = withContext(Dispatchers.IO) {
         runCatching {
+            val target = url ?: (WY_LINUXAPI_BASE_URL + path)
+            require(NcmEndpoint.acceptsSession(URL(target))) { "Untrusted NetEase endpoint" }
             val sess = NcmSession.INSTANCE
             ensureAnonymousToken(sess)
-            val target = url ?: (WY_LINUXAPI_BASE_URL + path)
             val encrypted = NcmCrypto.linuxapi(params)
             val body = encrypted.toFormBody().toByteArray(Charsets.UTF_8)
             val headers = buildHeaders(
@@ -256,7 +275,7 @@ object NcmRequest {
                 accept = "*/*",
             )
             val raw = http("POST", target, headers, body, sess?.proxy)
-            handleRawResponse(raw, path, sess, isEapi = false)
+            handleRawResponse(raw, URL(target), path, sess, isEapi = false)
         }
     }
 
@@ -267,38 +286,42 @@ object NcmRequest {
         val setCookies: List<String>,
     )
 
-    private fun handleRawResponse(
+    private suspend fun handleRawResponse(
         raw: Raw,
+        from: URL,
         path: String,
         sess: NcmSession?,
         isEapi: Boolean,
     ): NcmResponse {
-        if (raw.setCookies.isNotEmpty()) sess?.merge(raw.setCookies)
-
         if (raw.code in 300..399) {
             val loc = raw.location
                 ?: return NcmResponse(raw.code, emptyMap(), "3xx No Location")
 
             if (path.contains("/song/url") || path.contains("player/url")) {
+                val media = URL(from, loc)
+                require(media.protocol == "https" && media.userInfo == null) { "Untrusted media URL" }
                 val fake = mapOf(
                     "code" to raw.code,
-                    "data" to listOf(mapOf("url" to loc))
+                    "data" to listOf(mapOf("url" to media.toExternalForm()))
                 )
                 return NcmResponse(raw.code, fake, null)
             }
 
+            val target = NcmEndpoint.redirect(from, loc)
+            if (raw.setCookies.isNotEmpty()) sess?.merge(raw.setCookies)
             val followHeaders = buildHeaders(
-                host = URL(loc).host,
+                host = target.host,
                 referer = null,
                 osEnum = OS.PC,
                 session = sess,
                 accept = "*/*",
             )
-            val raw2 = http("GET", loc, followHeaders, null, sess?.proxy)
-            if (raw2.setCookies.isNotEmpty()) sess?.merge(raw2.setCookies)
+            val raw2 = http("GET", target.toExternalForm(), followHeaders, null, sess?.proxy)
+            if (raw2.code !in 300..399 && raw2.setCookies.isNotEmpty()) sess?.merge(raw2.setCookies)
             return parseBody(raw2.code, raw2.bodyBytes, path, isEapi = false)
         }
 
+        if (raw.setCookies.isNotEmpty()) sess?.merge(raw.setCookies)
         return parseBody(raw.code, raw.bodyBytes, path, isEapi)
     }
 
@@ -429,56 +452,22 @@ object NcmRequest {
         return headers
     }
 
-    private fun http(
+    private suspend fun http(
         method: String,
         url: String,
         headers: Map<String, String>,
         body: ByteArray?,
         proxy: String?,
     ): Raw {
-        val u = URL(url)
-        val conn = if (proxy.isNullOrBlank()) u.openConnection() else u.openConnection(parseProxy(proxy))
-
-        conn as HttpURLConnection
-        if (conn is HttpsURLConnection) {
-            // Keep default system SSL/TLS
+        require(NcmEndpoint.acceptsSession(URL(url))) { "Untrusted NetEase endpoint" }
+        val request = Request.Builder().url(url).apply {
+            headers.forEach { (name, value) -> header(name, value) }
+            method(method, body?.let { RequestBody.create(MediaType.parse(headers["Content-Type"].orEmpty()), it) })
+        }.build()
+        val transport = if (proxy.isNullOrBlank()) client else client.newBuilder().proxy(parseProxy(proxy)).build()
+        return transport.newCall(request).readResponse {
+            Raw(it.code(), it.body()?.bytes() ?: ByteArray(0), it.header("Location"), it.headers("Set-Cookie"))
         }
-        conn.requestMethod = method
-        conn.connectTimeout = CONNECT_TIMEOUT_MS
-        conn.readTimeout = READ_TIMEOUT_MS
-        conn.instanceFollowRedirects = false
-        conn.doInput = true
-        conn.doOutput = body != null
-        for ((k, v) in headers) conn.setRequestProperty(k, v)
-        if (body != null) {
-            conn.outputStream.use { it.write(body) }
-        }
-
-        return try {
-            val code = conn.responseCode
-            val setCookies = extractSetCookies(conn)
-            val loc = conn.getHeaderField("Location")
-            val stream = runCatching {
-                if (code in 200..299) conn.inputStream else conn.errorStream
-            }.getOrNull()
-            val bytes = stream?.use { it.readBytesCompat() } ?: ByteArray(0)
-            Raw(code, bytes, loc, setCookies)
-        } finally {
-            runCatching { conn.disconnect() }
-        }
-    }
-
-    private fun extractSetCookies(conn: HttpURLConnection): List<String> {
-        val out = ArrayList<String>(2)
-        var i = 0
-        while (true) {
-            val k = conn.getHeaderFieldKey(i) ?: break
-            if (k.equals("Set-Cookie", ignoreCase = true)) {
-                conn.getHeaderField(i)?.let(out::add)
-            }
-            i++
-        }
-        return out
     }
 
     private fun parseProxy(s: String): Proxy {

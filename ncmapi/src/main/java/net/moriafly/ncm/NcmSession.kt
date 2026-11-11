@@ -68,6 +68,7 @@ class NcmSession internal constructor(
 
     val isLogin: Boolean get() = cookies["MUSIC_U"]?.isNotBlank() == true
 
+    @Synchronized
     fun merge(rawSetCookies: List<String>) {
         val cur = cookies
         for (raw in rawSetCookies) {
@@ -83,6 +84,7 @@ class NcmSession internal constructor(
         cookies = cur
     }
 
+    @Synchronized
     fun merge(map: Map<String, String?>) {
         val cur = cookies
         for ((k, v) in map) {
@@ -98,6 +100,7 @@ class NcmSession internal constructor(
         return c.entries.joinToString("; ") { (k, v) -> "$k=$v" }
     }
 
+    @Synchronized
     fun set(key: String, value: String?) {
         val cur = cookies
         if (value == null || value.isBlank()) cur.remove(key)
@@ -105,10 +108,12 @@ class NcmSession internal constructor(
         cookies = cur
     }
 
+    @Synchronized
     fun clear() {
         sp.edit().remove("cookies").remove("user_id").remove("user_nickname").apply()
     }
 
+    @Synchronized
     fun logout() {
         val cur = cookies
         cur.remove("MUSIC_U")

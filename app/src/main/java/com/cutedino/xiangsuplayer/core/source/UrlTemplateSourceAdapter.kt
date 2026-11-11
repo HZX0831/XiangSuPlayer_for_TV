@@ -6,6 +6,7 @@ import com.cutedino.xiangsuplayer.core.model.Song
 import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import net.moriafly.ncm.readResponse
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
@@ -15,7 +16,7 @@ class UrlTemplateSourceAdapter(
     override val sourceName: String,
     private val urlTemplate: String,
     override val priority: Int = 70,
-    private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
+    private val okHttpClient: OkHttpClient = SourceNetwork.configure(OkHttpClient.Builder())
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(8, TimeUnit.SECONDS)
         .build()
@@ -37,7 +38,7 @@ class UrlTemplateSourceAdapter(
                 .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
                 .build()
 
-            okHttpClient.newCall(request).execute().use { response ->
+            okHttpClient.newCall(request).readResponse { response ->
                 if (!response.isSuccessful) {
                     throw IllegalStateException("$sourceName HTTP 请求失败 Status=${response.code}")
                 }

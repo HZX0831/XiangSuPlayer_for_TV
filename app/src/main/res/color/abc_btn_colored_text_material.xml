@@ -3,6 +3,7 @@
     <item
         android:state_enabled="false"
         android:color="?android:attr/textColorPrimary"
+        android:alpha="?android:attr/disabledAlpha"
         app:alpha="?android:attr/disabledAlpha"/>
     <item android:color="?android:attr/textColorPrimaryInverse"/>
 </selector>

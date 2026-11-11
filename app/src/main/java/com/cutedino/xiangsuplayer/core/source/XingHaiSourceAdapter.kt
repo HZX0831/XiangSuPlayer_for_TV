@@ -6,12 +6,13 @@ import com.cutedino.xiangsuplayer.core.model.Song
 import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import net.moriafly.ncm.readResponse
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
 class XingHaiSourceAdapter(
-    private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
+    private val okHttpClient: OkHttpClient = SourceNetwork.configure(OkHttpClient.Builder())
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(8, TimeUnit.SECONDS)
         .build()
@@ -49,7 +50,7 @@ class XingHaiSourceAdapter(
         }
     }
 
-    private fun fetchVipUrl(songId: String, quality: AudioQuality): String {
+    private suspend fun fetchVipUrl(songId: String, quality: AudioQuality): String {
         val level = when (quality) {
             AudioQuality.STANDARD -> "standard"
             AudioQuality.HIGH -> "exhigh"
@@ -62,19 +63,19 @@ class XingHaiSourceAdapter(
             .addHeader("User-Agent", "LX-Music-Mobile")
             .build()
 
-        okHttpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return ""
-            val body = response.body?.string() ?: return ""
+        return okHttpClient.newCall(request).readResponse { response ->
+            if (!response.isSuccessful) return@readResponse ""
+            val body = response.body?.string() ?: return@readResponse ""
             val json = JsonParser.parseString(body).asJsonObject
             if (json.get("code")?.asInt == 200 && json.has("data")) {
                 val dataObj = json.getAsJsonObject("data")
-                return dataObj.get("url")?.asString ?: ""
+                return@readResponse dataObj.get("url")?.asString ?: ""
             }
+            ""
         }
-        return ""
     }
 
-    private fun fetchGdUrl(songId: String, quality: AudioQuality): String {
+    private suspend fun fetchGdUrl(songId: String, quality: AudioQuality): String {
         val br = when (quality) {
             AudioQuality.STANDARD -> "128"
             AudioQuality.HIGH -> "320"
@@ -87,11 +88,11 @@ class XingHaiSourceAdapter(
             .addHeader("User-Agent", "LX-Music-Mobile")
             .build()
 
-        okHttpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return ""
-            val body = response.body?.string() ?: return ""
+        return okHttpClient.newCall(request).readResponse { response ->
+            if (!response.isSuccessful) return@readResponse ""
+            val body = response.body?.string() ?: return@readResponse ""
             val json = JsonParser.parseString(body).asJsonObject
-            return json.get("url")?.asString ?: ""
+            json.get("url")?.asString.orEmpty()
         }
     }
 

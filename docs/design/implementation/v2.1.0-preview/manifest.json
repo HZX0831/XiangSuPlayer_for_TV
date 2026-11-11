@@ -1,0 +1,137 @@
+[
+  {
+    "name": "device-compact.log",
+    "size": 816,
+    "sha256": "31d76aeb1d79cf2f2d96496a7b27c7baaae91f7bd7f658e70d3620d7eff80231"
+  },
+  {
+    "name": "device-compactLarge.log",
+    "size": 816,
+    "sha256": "1c34e2b4b86913bdfaef5c27512c7ad1de4d197345cbf35d2d17ad2e93f4655c"
+  },
+  {
+    "name": "device-large.log",
+    "size": 816,
+    "sha256": "863bfa1eb63a93e800587678794395785de06f871c0b77e4b3a8d35dc21b847b"
+  },
+  {
+    "name": "device-standard.log",
+    "size": 6942,
+    "sha256": "6edc10eee4674a3d371d3daf5a2ec9642736f307c9cb290e608caa17015d7629"
+  },
+  {
+    "name": "home-empty-preview-standard.png",
+    "size": 92921,
+    "sha256": "a7bd6bd8af0472beed1c3d18f28115578cac9161eb88cbfeeac93616cb871369"
+  },
+  {
+    "name": "home-more-focus-preview-standard.png",
+    "size": 144026,
+    "sha256": "0071dace150c2aa172e4c42e034575571d3fc2faaa83dc25b35437f2799c9ea5"
+  },
+  {
+    "name": "home-populated-preview-standard.png",
+    "size": 143445,
+    "sha256": "f8dd39e416325a7659f157e8e4df2c3ff158aa4b52064f8bc2263bda91527d9c"
+  },
+  {
+    "name": "karaoke-empty-preview-standard.png",
+    "size": 41892,
+    "sha256": "fc5f2a8ad29599a25e0585945b66785ae161ba8b906aad0cacd76353d8362703"
+  },
+  {
+    "name": "market-error-preview-standard.png",
+    "size": 77225,
+    "sha256": "22e07ca6c8a14bcb2bdbe52d43e5113d17c5b6dd104c92bd8315a069c4b879bb"
+  },
+  {
+    "name": "market-install-error-preview-standard.png",
+    "size": 84487,
+    "sha256": "66989b5c13fb1a7dc7916e8fc90056ad38022eb276a05a9da0528bc2e7da3ada"
+  },
+  {
+    "name": "player-lyrics-preview-standard.png",
+    "size": 105814,
+    "sha256": "dba18400f3a3b38dde82f4f1ec3b1cce8eb55495e94bfa782db882bc8d077a17"
+  },
+  {
+    "name": "player-no-lyrics-preview-standard.png",
+    "size": 102276,
+    "sha256": "b11110dceb3f194749f3d46a9a5999105d87236bffd18671049e0916d212cc92"
+  },
+  {
+    "name": "player-pure-long-preview-standard.png",
+    "size": 45278,
+    "sha256": "37a28d210cdda312fe7d5da29ee7b481418dd25d5bb35323024e90fa96d51fcd"
+  },
+  {
+    "name": "settings-about-preview-compact.png",
+    "size": 106321,
+    "sha256": "740b5c6d26432d40233920c1a53e0873e2bfab2d8d735d683d427207ffd73351"
+  },
+  {
+    "name": "settings-about-preview-compactLarge.png",
+    "size": 99575,
+    "sha256": "dd8af9b4e86ff15c806a8f3e50f7ccea1bd0105b4cc94bb60f47a5684e69eeb5"
+  },
+  {
+    "name": "settings-about-preview-large.png",
+    "size": 137359,
+    "sha256": "600c9ad16ba98a9f2cc39d321c7bacfd3f0170b2e6ea767f061cb8bd3bb11bda"
+  },
+  {
+    "name": "settings-about-preview-standard.png",
+    "size": 150795,
+    "sha256": "f455c32ff2d01c11feda1baf7c1615d7910f3eb31545da8fb28533e0582c2685"
+  },
+  {
+    "name": "settings-compatibility-preview-compact.png",
+    "size": 79747,
+    "sha256": "bf365f86aab05003e2b3d4585d9c2a8e4b0828c0ba36e853c1b4bb4568ebb848"
+  },
+  {
+    "name": "settings-compatibility-preview-compactLarge.png",
+    "size": 84401,
+    "sha256": "89c420b47ca9fd870d0709b6331f012388b50d2a10890be43a92530601d4bd53"
+  },
+  {
+    "name": "settings-compatibility-preview-large.png",
+    "size": 133959,
+    "sha256": "4e5edf06f477be6d39443f446d89bb3b37d4cad9894dc0e593bcede752f335c4"
+  },
+  {
+    "name": "settings-compatibility-preview-standard.png",
+    "size": 124181,
+    "sha256": "0d156581737248db270670cc4c5afcfc843bb57c8246be6c9a96d8885595965b"
+  },
+  {
+    "name": "settings-playback-preview-compact.png",
+    "size": 76784,
+    "sha256": "b86f22db17f5fa97b3b4eba4f30e42ca460414436878177daeae36617998f3f5"
+  },
+  {
+    "name": "settings-playback-preview-compactLarge.png",
+    "size": 79536,
+    "sha256": "9fba0e7b5259785b7379270dac4cb37efb7be4d848220a262d0cb63e34764a00"
+  },
+  {
+    "name": "settings-playback-preview-large.png",
+    "size": 132954,
+    "sha256": "1fd487c7a44271be1e81c2e6f566b7b756d17ff1a35a6899d477773c5d4f1864"
+  },
+  {
+    "name": "settings-playback-preview-standard.png",
+    "size": 130946,
+    "sha256": "addb2fbb355c1a84a4f396febd0192bf33db89488f737d67fe1bbd61e9e079d2"
+  },
+  {
+    "name": "toplist-rows-preview-standard.png",
+    "size": 149745,
+    "sha256": "339373146eb36aca9c21abea7671a1f5ea15bd79f5db057de4fddb62977108d9"
+  },
+  {
+    "name": "validation.log",
+    "size": 8467,
+    "sha256": "c60183ae7b12e672da2eec0c2542fe36ba43000b458e6bb5d54bac10041eb4a9"
+  }
+]

@@ -3,12 +3,15 @@
     <item
         android:state_enabled="false"
         android:color="?android:attr/colorForeground"
+        android:alpha="0.1"
         app:alpha="0.1"/>
     <item
         android:state_checked="true"
         android:color="?attr/colorControlActivated"
+        android:alpha="0.3"
         app:alpha="0.3"/>
     <item
         android:color="?android:attr/colorForeground"
+        android:alpha="0.3"
         app:alpha="0.3"/>
 </selector>

@@ -1,0 +1,161 @@
+{
+  "repository": "r3n011/XiangsuPlayerHQ",
+  "commit": "09a1fc3d40d56ac2ba534056feb27ac3e8438cf6",
+  "files": [
+    {
+      "path": "ui/theme/Color.kt",
+      "sha": "cddf2598e7e65c1c9a36d25b6d38ef8d02ed6163",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/ui/theme/Color.kt",
+      "encoding": "utf-8"
+    },
+    {
+      "path": "ui/theme/Theme.kt",
+      "sha": "6691851581e3df2f5b06f6375f4e6d2e9629d460",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/ui/theme/Theme.kt",
+      "encoding": "utf-8"
+    },
+    {
+      "path": "ui/theme/Shape.kt",
+      "sha": "bddd59c70c086014d781b0c77b7e5758361bfc88",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/ui/theme/Shape.kt",
+      "encoding": "utf-8"
+    },
+    {
+      "path": "ui/theme/Type.kt",
+      "sha": "9b7109f8eb3548c4d7b44f3e42450767e6d3049a",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/ui/theme/Type.kt",
+      "encoding": "utf-8"
+    },
+    {
+      "path": "ui/theme/ColorRoles.kt",
+      "sha": "889e98a1019e810d81f37c3f134ce71196a46c64",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/ui/theme/ColorRoles.kt",
+      "encoding": "utf-8"
+    },
+    {
+      "path": "presentation/components/FeaturedCarouselSection.kt",
+      "sha": "c0ba8faa96d5a279f871733e7a6f6e023f98e7e5",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/presentation/components/FeaturedCarouselSection.kt",
+      "encoding": "utf-8"
+    },
+    {
+      "path": "presentation/components/DailyMixSection.kt",
+      "sha": "e4b11ba5b3b48128e217a0a6eea0940d4940856b",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/presentation/components/DailyMixSection.kt",
+      "encoding": "utf-8"
+    },
+    {
+      "path": "presentation/components/ExpressiveButtonGroup.kt",
+      "sha": "6a85dc63dd846943958552569fd130f74dc07552",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/presentation/components/ExpressiveButtonGroup.kt",
+      "encoding": "utf-8"
+    },
+    {
+      "path": "presentation/components/OptimizedAlbumArt.kt",
+      "sha": "a4879e8e3f3a5826be97ffe5e1c8faae26c8b188",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/presentation/components/OptimizedAlbumArt.kt",
+      "encoding": "utf-8"
+    },
+    {
+      "path": "presentation/components/player/AnimatedPlaybackControls.kt",
+      "sha": "5592fa133b5f83220487f2f54ce5cbd5f467c5f2",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/presentation/components/player/AnimatedPlaybackControls.kt",
+      "encoding": "utf-8"
+    },
+    {
+      "path": "presentation/components/player/ImmersiveCoverBackdrop.kt",
+      "sha": "afdf83c0499a589fe4e59b0b371f70efdb5d576b",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/presentation/components/player/ImmersiveCoverBackdrop.kt",
+      "encoding": "utf-8"
+    },
+    {
+      "path": "presentation/screens/TabAnimation.kt",
+      "sha": "89e6caef808858d3770efbf46e3856f088c9d096",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/presentation/screens/TabAnimation.kt",
+      "encoding": "utf-8"
+    },
+    {
+      "path": "presentation/screens/HomeScreen.kt",
+      "sha": "fa32f4b65c73b6a1a59895011d668f81fbdb676a",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/presentation/screens/HomeScreen.kt",
+      "encoding": "utf-8"
+    },
+    {
+      "path": "presentation/components/StyledPlayerSeekBar.kt",
+      "sha": "794ff9b27438a8da17f6514a9dbe6bd2c3de97c5",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/presentation/components/StyledPlayerSeekBar.kt",
+      "encoding": "utf-8"
+    },
+    {
+      "path": "presentation/components/WavyMusicSlider.kt",
+      "sha": "8ecb345c6a3f30b768d4ad1e3a7618f43efa95cf",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/presentation/components/WavyMusicSlider.kt",
+      "encoding": "utf-8"
+    },
+    {
+      "path": "presentation/components/player/FullPlayerContent.kt",
+      "sha": "7750b150ca3b88c92139d78cc22f6f0443b91276",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/presentation/components/player/FullPlayerContent.kt",
+      "encoding": "utf-8"
+    },
+    {
+      "path": "presentation/components/LyricsSheet.kt",
+      "sha": "462e87f20452bf4a488b2f2603cbbfb135847ca7",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/presentation/components/LyricsSheet.kt",
+      "encoding": "utf-8"
+    },
+    {
+      "path": "presentation/components/UnifiedPlayerSheetV2.kt",
+      "sha": "60f2887cbdc77ade1f0d07e07d272f004f8293b4",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/presentation/components/UnifiedPlayerSheetV2.kt",
+      "encoding": "utf-8"
+    },
+    {
+      "path": "presentation/components/RecentlyPlayedSection.kt",
+      "sha": "ba6cc65bc2f43de9e038681f501e20bf1f96180f",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/presentation/components/RecentlyPlayedSection.kt",
+      "encoding": "utf-8"
+    },
+    {
+      "path": "presentation/components/FloatingNavBarContent.kt",
+      "sha": "330bc103c88aad37b4856e74278e4e95136b7c69",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/presentation/components/FloatingNavBarContent.kt",
+      "encoding": "utf-8"
+    },
+    {
+      "path": "presentation/screens/SettingsComponents.kt",
+      "sha": "3fa9cca6b0797190d9c13a441d8c4d4a34617b08",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/presentation/screens/SettingsComponents.kt",
+      "encoding": "utf-8"
+    },
+    {
+      "path": "ui/theme/ShapeCache.kt",
+      "sha": "60546aec2aa1cbbbce78830c668e2e737a41eba3",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/app/src/main/java/com/theveloper/pixelplay/ui/theme/ShapeCache.kt",
+      "encoding": "utf-8"
+    }
+  ],
+  "screenshots": [
+    {
+      "path": "assets/screenshot1.jpg",
+      "sha": "b93793d3326d275a418e71fe3fe668f2b92b9019",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/assets/screenshot1.jpg"
+    },
+    {
+      "path": "assets/screenshot2.jpg",
+      "sha": "557315f32c4732aecedb225216af1aff3df23d39",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/assets/screenshot2.jpg"
+    },
+    {
+      "path": "assets/screenshot3.jpg",
+      "sha": "1bdd9e754cb9c60f8b4af778f0bce9ecd97dc15c",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/assets/screenshot3.jpg"
+    },
+    {
+      "path": "assets/screenshot4.jpg",
+      "sha": "d362b85c1f51236bc70387a7240e2b0742f06419",
+      "url": "https://github.com/r3n011/XiangsuPlayerHQ/blob/09a1fc3d40d56ac2ba534056feb27ac3e8438cf6/assets/screenshot4.jpg"
+    }
+  ],
+  "tvCommit": "4b791abcefab1975d89830f380def25443a6cb23"
+}

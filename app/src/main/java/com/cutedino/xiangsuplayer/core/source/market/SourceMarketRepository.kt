@@ -1,20 +1,30 @@
 package com.cutedino.xiangsuplayer.core.source.market
 
 import android.content.Context
+import android.util.AtomicFile
 import com.cutedino.xiangsuplayer.core.model.AudioQuality
 import com.cutedino.xiangsuplayer.core.model.LyricLine
 import com.cutedino.xiangsuplayer.core.model.Song
 import com.cutedino.xiangsuplayer.core.source.ISoundSourceAdapter
 import com.cutedino.xiangsuplayer.core.source.SoundSourceRepository
+import com.cutedino.xiangsuplayer.core.source.SourceEnablement
+import com.cutedino.xiangsuplayer.core.source.SourceNetwork
+import com.cutedino.xiangsuplayer.data.session.SessionManager
 import com.cutedino.xiangsuplayer.core.source.StreamResult
 import com.cutedino.xiangsuplayer.core.source.builtin.BuiltInSourceSearchApi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import net.moriafly.ncm.readResponse
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import okhttp3.Call
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.security.MessageDigest
 import java.io.File
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
@@ -53,6 +63,8 @@ data class InstalledLxSource(
  * 2. 下载并解析 .zip / .js 落雪音源脚本头注释 (@name, @version, @author, @description)
  * 3. 提取脚本内 API 端点或结合跨平台直链，注册为动态音源适配器参与并发竞速
  */
+class SourceAlreadyInstalledException : IllegalArgumentException("同名音源已安装")
+
 object SourceMarketRepository {
 
     private const val RELEASES_API = "https://api.github.com/repos/guoyue2010/lxmusic-/releases?per_page=10"
@@ -66,58 +78,117 @@ object SourceMarketRepository {
         OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
-            .followRedirects(true)
+            .followSslRedirects(false)
             .build()
     }
 
     private val headerBlockRegex = Regex("""/\*!([\s\S]*?)\*/""")
     private val metaLineRegex = Regex("""^\s*\*?\s*@(\w+)\s+(.+?)\s*$""", RegexOption.MULTILINE)
-    private val urlExtractRegex = Regex("""https?://[a-zA-Z0-9._-]+(?::\d+)?(?:/[a-zA-Z0-9._/-]*)?""")
 
+
+    private const val MAX_DOWNLOAD = 4 * 1024 * 1024
+    private const val MAX_SCRIPT = 256 * 1024
+    private const val MAX_EXPANDED = 8 * 1024 * 1024
+    private const val MAX_ENTRIES = 64
     private var sourcesDir: File? = null
-    private val installedSources = mutableListOf<InstalledLxSource>()
+    @Volatile private var installedSources: List<InstalledLxSource> = emptyList()
 
     fun init(context: Context) {
         val dir = File(context.filesDir, "lx_sources")
-        if (!dir.exists()) dir.mkdirs()
+        dir.mkdirs()
         sourcesDir = dir
         reloadInstalledSources()
     }
 
-    fun getInstalledSources(): List<InstalledLxSource> = installedSources.toList()
+    fun getInstalledSources(): List<InstalledLxSource> = installedSources
 
+    @Synchronized
     fun reloadInstalledSources() {
         val dir = sourcesDir ?: return
-        installedSources.clear()
-        val files = dir.listFiles { f -> f.isFile && f.name.endsWith(".js", ignoreCase = true) }
-            ?.sortedBy { it.name }
-            .orEmpty()
-
-        for (file in files) {
-            val content = runCatching { file.readText() }.getOrDefault("")
-            if (content.isNotBlank()) {
-                val parsed = parseLxScriptContent(file.name, content)
-                installedSources.add(parsed)
-            }
-        }
-        // 将已安装的落雪脚本注册到 SoundSourceRepository
-        SoundSourceRepository.registerDynamicAdapters(
-            installedSources.map { LxScriptSourceAdapter(it) }
-        )
+        installedSources = sourceFiles(dir).map { (name, file) ->
+            val text = runCatching {
+                file.inputStream().use { it.readBounded(MAX_SCRIPT).toString(Charsets.UTF_8) }
+            }.getOrDefault("")
+            parseLxScriptContent(name, text)
+        }.sortedBy { it.fileName }
+        val disabled = SessionManager.disabledLxSources
+        val migrated = installedSources.filter { legacyId(it.fileName) in disabled }.map { it.id }
+        val enabledState = disabled.filterTo(mutableSetOf()) { it.startsWith("lx_file-") } + migrated
+        if (enabledState != disabled) SessionManager.disabledLxSources = enabledState
+        SoundSourceRepository.disabledLxSourceIds = enabledState
+        SoundSourceRepository.registerDynamicAdapters(installedSources.map(::LxScriptSourceAdapter))
     }
 
-    suspend fun fetchMarketReleases(): Result<List<MarketRelease>> = withContext(Dispatchers.IO) {
-        runCatching {
+    private fun sourceFiles(dir: File): Map<String, File> {
+        val index = AtomicFile(File(dir, "installed.json"))
+        if (!index.baseFile.exists() && !File(dir, "installed.json.bak").exists()) {
+            return dir.listFiles { file -> file.isFile && file.name.endsWith(".js", true) }
+                .orEmpty().associateBy { it.name }
+        }
+        val data = JSONObject(index.readFully().toString(Charsets.UTF_8))
+        return data.keys().asSequence().associateWith { name ->
+            val path = data.getString(name)
+            require(path.matches(Regex("(?:payloads/[a-f0-9-]+|[^/\\\\]+\\.js)", RegexOption.IGNORE_CASE)))
+            File(dir, path)
+        }
+    }
+
+    private fun writeIndex(dir: File, sources: Map<String, File>) {
+        val data = JSONObject()
+        sources.forEach { (name, file) -> data.put(name, file.relativeTo(dir).invariantSeparatorsPath) }
+        val index = AtomicFile(File(dir, "installed.json"))
+        val out = index.startWrite()
+        try {
+            out.write(data.toString().toByteArray(Charsets.UTF_8))
+            index.finishWrite(out)
+        } catch (failure: Exception) {
+            index.failWrite(out)
+            throw failure
+        }
+    }
+
+    @Synchronized
+    private fun publish(scripts: Map<String, String>, replace: Boolean): List<InstalledLxSource> {
+        require(scripts.isNotEmpty()) { "音源包没有可导入的 JS 文件" }
+        val dir = checkNotNull(sourcesDir)
+        val previous = sourceFiles(dir)
+        if (!replace && scripts.keys.any(previous::containsKey)) throw SourceAlreadyInstalledException()
+        val staged = mutableMapOf<String, File>()
+        try {
+            val payloads = File(dir, "payloads").apply { mkdirs() }
+            for ((name, content) in scripts) {
+                val file = File(payloads, java.util.UUID.randomUUID().toString())
+                staged[name] = file
+                file.outputStream().use {
+                    it.write(content.toByteArray(Charsets.UTF_8))
+                    it.fd.sync()
+                }
+            }
+            writeIndex(dir, previous + staged)
+        } catch (failure: Exception) {
+            staged.values.forEach { it.delete() }
+            throw failure
+        }
+        scripts.keys.forEach { previous[it]?.delete() }
+        reloadInstalledSources()
+        return installedSources.filter { it.fileName in scripts }
+    }
+
+    suspend fun fetchMarketReleases(): Result<List<MarketRelease>> = fetchMarketReleases(httpClient)
+
+    internal suspend fun fetchMarketReleases(client: Call.Factory): Result<List<MarketRelease>> = withContext(Dispatchers.IO) {
+        try {
             val req = Request.Builder()
                 .url(RELEASES_API)
                 .header("Accept", "application/vnd.github+json")
                 .header("User-Agent", "PixelPlay-TV/2.1")
                 .build()
-            val body = httpClient.newCall(req).execute().use { resp ->
-                if (resp.isSuccessful) resp.body?.string() else null
+            val body = client.newCall(req).readResponse { resp ->
+                check(resp.isSuccessful) { "音源市场请求失败（HTTP ${resp.code}）" }
+                checkNotNull(resp.body?.string()) { "音源市场返回了空响应" }
             }
 
-            if (!body.isNullOrBlank()) {
+            val releases = run {
                 val arr = JSONArray(body)
                 val list = ArrayList<MarketRelease>(arr.length())
                 for (i in 0 until arr.length()) {
@@ -151,108 +222,117 @@ object SourceMarketRepository {
                         )
                     }
                 }
-                if (list.isNotEmpty()) return@runCatching list
+                list
             }
-            getFallbackCuratedReleases()
-        }.recover {
-            getFallbackCuratedReleases()
+            Result.success(releases)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Result.failure(failure)
         }
     }
 
-    /**
-     * 下载并安装音源包 (.zip 或 .js)，返回新安装的脚本数量
-     */
-    suspend fun installAsset(asset: MarketAsset): Result<Int> = withContext(Dispatchers.IO) {
-        runCatching {
-            val dir = sourcesDir ?: throw IllegalStateException("音源目录未初始化")
-            var bytes: ByteArray? = null
 
-            for (mirror in GITHUB_MIRRORS) {
-                val targetUrl = if (mirror.isEmpty()) asset.downloadUrl else "$mirror${asset.downloadUrl}"
-                try {
-                    val req = Request.Builder()
-                        .url(targetUrl)
-                        .header("User-Agent", "PixelPlay-TV/2.1")
-                        .build()
-                    httpClient.newCall(req).execute().use { resp ->
-                        if (resp.isSuccessful) {
-                            bytes = resp.body?.bytes()
-                        }
+    suspend fun installAsset(asset: MarketAsset, replace: Boolean = false): Result<Int> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                require(asset.size <= MAX_DOWNLOAD) { "音源包超过大小上限" }
+                val bytes = GITHUB_MIRRORS.firstNotNullOfOrNull { mirror ->
+                    try {
+                        download(mirror + asset.downloadUrl, MAX_DOWNLOAD)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: java.io.IOException) {
+                        null
                     }
-                    if (bytes != null && bytes!!.isNotEmpty()) break
-                } catch (_: Exception) {
+                } ?: error("音源包下载失败")
+                val scripts = if (asset.name.endsWith(".zip", true)) {
+                    unzipScripts(bytes)
+                } else {
+                    require(bytes.size <= MAX_SCRIPT) { "脚本超过大小上限" }
+                    mapOf(scriptName(asset.name) to bytes.toString(Charsets.UTF_8))
                 }
+                publish(scripts, replace).size
             }
+        }
 
-            if (bytes == null || bytes!!.isEmpty()) {
-                // 如果内置精选预设包，生成对应标准落雪脚本并安装
-                if (asset.downloadUrl.startsWith("builtin://")) {
-                    val script = buildBuiltinLxScript(asset.name)
-                    val outFile = File(dir, asset.name.removeSuffix(".zip") + ".js")
-                    outFile.writeText(script)
-                    reloadInstalledSources()
-                    return@runCatching 1
+    suspend fun importFromUrl(url: String, replace: Boolean = false): Result<InstalledLxSource> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val endpoint = requireNotNull(SourceNetwork.httpsUrl(url.trim())) { "仅支持 HTTPS 音源" }
+                val name = endpoint.pathSegments.last().let {
+                    if (it.endsWith(".js", true)) scriptName(it) else "custom_${System.currentTimeMillis()}.js"
                 }
-                throw IllegalStateException("音源包下载失败，请检查网络连接")
+                val bytes = download(endpoint.toString(), MAX_SCRIPT) ?: error("音源下载失败")
+                publish(mapOf(name to bytes.toString(Charsets.UTF_8)), replace).single()
             }
+        }
 
-            var count = 0
-            if (asset.name.endsWith(".zip", ignoreCase = true)) {
-                ZipInputStream(ByteArrayInputStream(bytes!!)).use { zis ->
-                    var entry = zis.nextEntry
-                    while (entry != null) {
-                        if (!entry.isDirectory && entry.name.endsWith(".js", ignoreCase = true)) {
-                            val cleanName = entry.name.substringAfterLast('/')
-                            val contentBytes = zis.readBytes()
-                            val text = String(contentBytes, Charsets.UTF_8)
-                            if (headerBlockRegex.containsMatchIn(text) || text.contains("globalThis.lx") || text.contains("lx.on")) {
-                                File(dir, cleanName).writeText(text)
-                                count++
-                            }
-                        }
-                        zis.closeEntry()
-                        entry = zis.nextEntry
-                    }
-                }
-            } else if (asset.name.endsWith(".js", ignoreCase = true)) {
-                val text = String(bytes!!, Charsets.UTF_8)
-                File(dir, asset.name).writeText(text)
-                count = 1
+    private suspend fun download(url: String, limit: Int): ByteArray? {
+        val endpoint = requireNotNull(SourceNetwork.httpsUrl(url)) { "仅支持 HTTPS 音源" }
+        val request = Request.Builder().url(endpoint).build()
+        return httpClient.newCall(request).readResponse { response ->
+            response.body?.takeIf { response.isSuccessful }?.let { body ->
+                require(body.contentLength() <= limit) { "音源包超过大小上限" }
+                body.byteStream().readBounded(limit)
             }
-
-            reloadInstalledSources()
-            count
         }
     }
 
-    /**
-     * 通过自定义直链 URL 导入单文件 .js 落雪音源脚本
-     */
-    suspend fun importFromUrl(url: String): Result<InstalledLxSource> = withContext(Dispatchers.IO) {
-        runCatching {
-            val dir = sourcesDir ?: throw IllegalStateException("音源目录未初始化")
-            val req = Request.Builder().url(url.trim()).header("User-Agent", "PixelPlay-TV/2.1").build()
-            val text = httpClient.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
-                resp.body?.string() ?: throw IllegalStateException("脚本内容为空")
+    private fun unzipScripts(bytes: ByteArray): Map<String, String> {
+        val scripts = linkedMapOf<String, String>()
+        var count = 0
+        var remaining = MAX_EXPANDED
+        ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                require(++count <= MAX_ENTRIES) { "音源包文件过多" }
+                val body = zip.readBounded(minOf(remaining, MAX_SCRIPT))
+                remaining -= body.size
+                if (!entry.isDirectory && entry.name.endsWith(".js", true)) {
+                    val name = scriptName(entry.name.substringAfterLast('/'))
+                    require(name !in scripts) { "音源包内存在同名文件" }
+                    scripts[name] = body.toString(Charsets.UTF_8)
+                }
+                zip.closeEntry()
             }
-            val fileName = url.substringAfterLast('/').substringBefore('?').let {
-                if (it.endsWith(".js", true)) it else "custom_${System.currentTimeMillis()}.js"
-            }
-            val outFile = File(dir, fileName)
-            outFile.writeText(text)
-            val parsed = parseLxScriptContent(fileName, text)
-            reloadInstalledSources()
-            parsed
+        }
+        return scripts
+    }
+
+    private fun scriptName(name: String): String {
+        require(name.length in 4..200 && name.endsWith(".js", true) &&
+            name.none { it == '/' || it == '\\' || it.isISOControl() }) { "无效的脚本文件名" }
+        return name
+    }
+
+    private fun InputStream.readBounded(limit: Int): ByteArray {
+        val buffer = ByteArray(8192)
+        val output = ByteArrayOutputStream()
+        while (true) {
+            val count = read(buffer)
+            if (count < 0) return output.toByteArray()
+            require(output.size() + count <= limit) { "音源包超过大小上限" }
+            output.write(buffer, 0, count)
         }
     }
 
+    @Synchronized
     fun removeInstalledSource(sourceId: String) {
         val dir = sourcesDir ?: return
         val target = installedSources.firstOrNull { it.id == sourceId } ?: return
-        File(dir, target.fileName).delete()
+        val files = sourceFiles(dir)
+        writeIndex(dir, files - target.fileName)
+        files[target.fileName]?.delete()
         reloadInstalledSources()
     }
+
+    private fun legacyId(fileName: String): String =
+        SourceEnablement.LX_PREFIX + fileName.removeSuffix(".js").replace(Regex("[^a-zA-Z0-9_]"), "_")
+
+    internal fun stableId(fileName: String): String = "lx_file-" +
+        MessageDigest.getInstance("SHA-256").digest(fileName.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
 
     private fun parseLxScriptContent(fileName: String, content: String): InstalledLxSource {
         val meta = mutableMapOf<String, String>()
@@ -268,16 +348,9 @@ object SourceMarketRepository {
         val author = meta["author"] ?: "LX Community"
         val desc = meta["description"] ?: "落雪自定义音源脚本"
 
-        val apiBase = urlExtractRegex.findAll(content)
-            .map { it.value }
-            .firstOrNull { url ->
-                !url.contains("github.com") &&
-                    !url.contains("lxmusic") &&
-                    !url.contains("w3.org") &&
-                    (url.contains("api") || url.contains("music") || url.contains("url") || url.contains(":"))
-            }.orEmpty()
-
-        val id = "lx_" + fileName.removeSuffix(".js").replace(Regex("[^a-zA-Z0-9_]"), "_")
+        val apiBase = meta["apibaseurl"]?.let(SourceNetwork::httpsUrl)
+            ?.takeIf { it.query == null && it.fragment == null }?.toString().orEmpty()
+        val id = stableId(fileName)
         return InstalledLxSource(
             id = id,
             name = name,
@@ -289,73 +362,18 @@ object SourceMarketRepository {
         )
     }
 
-    private fun getFallbackCuratedReleases(): List<MarketRelease> = listOf(
-        MarketRelease(
-            id = 1001L,
-            tagName = "v2025.05-HQ",
-            name = "像素播放器 · 落雪多平台聚合音源合集 (内置镜像)",
-            publishedAt = "2025-05-01",
-            body = "包含六音 (SixYin)、野花 (Wildflower)、波点无损、酷我极速 Flac 等热门落雪音源脚本。",
-            assets = listOf(
-                MarketAsset(1L, "sixyin-lx-source-v1.2.js", 24_580L, "builtin://sixyin"),
-                MarketAsset(2L, "huibq-agg-flac-v2.0.js", 31_200L, "builtin://huibq"),
-                MarketAsset(3L, "wildflower-hires-v1.5.js", 28_900L, "builtin://wildflower"),
-                MarketAsset(4L, "kuwo-direct-lossless-v1.8.js", 19_400L, "builtin://kuwo_lossless")
-            )
-        )
-    )
-
-    private fun buildBuiltinLxScript(name: String): String = when {
-        name.contains("sixyin") -> """
-            /*!
-             * @name 六音音源 (SixYin LX)
-             * @description 支持 wy/tx/kg/kw/mg 全平台无损直链解析
-             * @version v1.2.1
-             * @author SixYin
-             */
-            // Built-in LX compatible script
-        """.trimIndent()
-        name.contains("huibq") -> """
-            /*!
-             * @name 聚合无损音源 (HuiBQ FLAC)
-             * @description 多平台高码率 FLAC 自动换源引擎
-             * @version v2.0.4
-             * @author HuiBQ
-             */
-            // Built-in LX compatible script
-        """.trimIndent()
-        name.contains("wildflower") -> """
-            /*!
-             * @name 野花 Hi-Res 音源 (Wildflower)
-             * @description 专为高品质流媒体打造的跨平台解析源
-             * @version v1.5.0
-             * @author Wildflower
-             */
-            // Built-in LX compatible script
-        """.trimIndent()
-        else -> """
-            /*!
-             * @name 酷我极速无损源 (KW Lossless)
-             * @description 酷我 2000k FLAC 直链高速通道
-             * @version v1.8.0
-             * @author PixelPlay
-             */
-            // Built-in LX compatible script
-        """.trimIndent()
-    }
 }
 
-/**
- * 将已安装的落雪音源脚本包装为 ISoundSourceAdapter 参与并发竞速与手动切源
- */
 class LxScriptSourceAdapter(
     private val lxSource: InstalledLxSource
 ) : ISoundSourceAdapter {
     override val sourceId: String = lxSource.id
-    override val sourceName: String = lxSource.name
+    val compatible: Boolean get() = lxSource.apiBaseUrl.isNotBlank()
+    override fun supports(song: Song): Boolean = compatible
+    override val sourceName: String = lxSource.name + if (compatible) "" else " · 不兼容"
     override val priority: Int = 88
 
-    private val client = OkHttpClient.Builder()
+    private val client = OkHttpClient.Builder().followSslRedirects(false)
         .connectTimeout(4, TimeUnit.SECONDS)
         .readTimeout(5, TimeUnit.SECONDS)
         .build()
@@ -367,40 +385,27 @@ class LxScriptSourceAdapter(
     override suspend fun getStreamUrl(song: Song, quality: AudioQuality): Result<StreamResult> =
         withContext(Dispatchers.IO) {
             runCatching {
-                // 1. 若脚本内提取到了标准 LX API 端点 (如 /url/{source}/{songId}/{quality})，优先请求
-                if (lxSource.apiBaseUrl.isNotBlank()) {
-                    val q = when (quality) {
-                        AudioQuality.HIRES -> "flac24bit"
-                        AudioQuality.LOSSLESS -> "flac"
-                        AudioQuality.HIGH -> "320k"
-                        AudioQuality.STANDARD -> "128k"
-                    }
-                    val src = song.source.ifBlank { "wy" }
-                    val sid = song.songmid.ifBlank { song.id }
-                    val candidateUrl = "${lxSource.apiBaseUrl.trimEnd('/')}/url/$src/$sid/$q"
-                    val req = Request.Builder()
-                        .url(candidateUrl)
-                        .header("User-Agent", "lx-music-request/2.0.0")
-                        .build()
-                    val body = runCatching {
-                        client.newCall(req).execute().use { resp ->
-                            if (resp.isSuccessful) resp.body?.string() else null
-                        }
-                    }.getOrNull()
-                    if (!body.isNullOrBlank() && body.trim().startsWith("{")) {
-                        val json = JSONObject(body)
-                        val url = json.optString("url").ifBlank {
-                            json.optJSONObject("data")?.optString("url").orEmpty()
-                        }
-                        if (url.startsWith("http")) {
-                            return@runCatching StreamResult.Full(url = url, sourceName = sourceName)
-                        }
-                    }
-                }
 
-                // 2. 使用内置多平台高码率直链解析器完成音源解析并标记为当前落雪音源名称
-                val resolved = BuiltInSourceSearchApi.resolvePlatformStream(song, quality).getOrThrow()
-                StreamResult.Full(url = resolved.streamUrl, sourceName = sourceName)
+                val base = requireNotNull(SourceNetwork.httpsUrl(lxSource.apiBaseUrl)) { "缺少有效的 @apiBaseUrl 配置" }
+                val qualityName = when (quality) {
+                    AudioQuality.HIRES -> "flac24bit"
+                    AudioQuality.LOSSLESS -> "flac"
+                    AudioQuality.HIGH -> "320k"
+                    AudioQuality.STANDARD -> "128k"
+                }
+                val endpoint = base.newBuilder()
+                    .addPathSegment("url").addPathSegment(song.key.sourceId)
+                    .addPathSegment(song.songmid.ifBlank { song.id }).addPathSegment(qualityName)
+                    .build()
+                val request = Request.Builder().url(endpoint).build()
+                val body = client.newCall(request).readResponse { response ->
+                    check(response.isSuccessful) { "音源 HTTP ${response.code}" }
+                    response.body?.string().orEmpty()
+                }
+                val json = JSONObject(body)
+                val url = json.optString("url").ifBlank { json.optJSONObject("data")?.optString("url").orEmpty() }
+                checkNotNull(SourceNetwork.httpsUrl(url)) { "音源未返回 HTTPS 播放地址" }
+                StreamResult.Full(url, sourceName = sourceName)
             }
         }
 

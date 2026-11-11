@@ -5,10 +5,13 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import com.cutedino.xiangsuplayer.core.model.Playlist
 import com.cutedino.xiangsuplayer.core.model.Song
+import com.cutedino.xiangsuplayer.core.model.SongKey
 import com.cutedino.xiangsuplayer.core.model.toSong
 import com.cutedino.xiangsuplayer.data.session.SessionManager
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import net.moriafly.ncm.readResponse
 import net.moriafly.ncm.NcmApi
 import net.moriafly.ncm.ncmInt
 import net.moriafly.ncm.ncmList
@@ -33,6 +36,10 @@ data class QqQrSession(
     val qrBitmap: Bitmap,
     val qrsig: String
 )
+
+internal suspend fun resolveNeteaseCommentId(song: Song, search: suspend (String) -> String): String =
+    if (song.key.sourceId == "wy" && song.id.isNotBlank() && song.id.all(Char::isDigit)) song.id
+    else search("${song.title} ${song.artist}")
 
 /**
  * 多平台账号、私人FM、心动模式、歌单同步与热评管理器
@@ -64,7 +71,7 @@ object MultiPlatformAccountManager {
         get() = SessionManager.kugouUserId.isNotBlank()
 
     fun getAccountSummaryText(): String {
-        val count = listOf(isNeteaseLoggedIn, isQqLoggedIn, isKugouLoggedIn).count { it }
+        val count = listOf(isNeteaseLoggedIn, isQqLoggedIn).count { it }
         return when {
             count == 0 -> "账号登录"
             isNeteaseLoggedIn && count == 1 -> NcmApi.nickname.ifBlank { "网易云已登录" }
@@ -139,8 +146,11 @@ object MultiPlatformAccountManager {
             }
         }
 
-    suspend fun syncNeteaseLike(songId: String, like: Boolean): Boolean = withContext(Dispatchers.IO) {
-        if (!NcmApi.isLogin || !songId.all { it.isDigit() }) return@withContext false
+    suspend fun syncNeteaseLike(key: SongKey, like: Boolean): Boolean = withContext(Dispatchers.IO) {
+        val songId = key.trackId
+        if (key.sourceId != "wy" || !NcmApi.isLogin || songId.toLongOrNull()?.let { it > 0 } != true) {
+            return@withContext false
+        }
         runCatching {
             val res = NcmApi.full.like(id = songId, like = like)
             res.getOrNull()?.ncmInt("code") == 200
@@ -150,11 +160,9 @@ object MultiPlatformAccountManager {
     @Suppress("UNCHECKED_CAST")
     suspend fun fetchSongHotComments(song: Song): List<SongCommentItem> = withContext(Dispatchers.IO) {
         runCatching {
-            val targetId = if (song.id.all { it.isDigit() }) {
-                song.id
-            } else {
+            val targetId = resolveNeteaseCommentId(song) { query ->
                 // 非网易云歌曲通过歌名匹配网易云 ID 拉取乐评
-                val searchRes = NcmApi.search("${song.title} ${song.artist}", limit = 1).getOrNull()
+                val searchRes = NcmApi.search(query, limit = 1).getOrNull()
                 val first = searchRes?.ncmObj("result")?.ncmList("songs")?.firstOrNull() as? Map<String, Any?>
                 first?.ncmLong("id")?.toString().orEmpty()
             }
@@ -192,7 +200,7 @@ object MultiPlatformAccountManager {
                 .header("User-Agent", UA_DESKTOP)
                 .header("Referer", "https://xui.ptlogin2.qq.com/")
                 .build()
-            httpClient.newCall(req).execute().use { resp ->
+            httpClient.newCall(req).readResponse { resp ->
                 if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
                 val cookies = resp.headers("Set-Cookie")
                 var qrsig = ""
@@ -229,7 +237,7 @@ object MultiPlatformAccountManager {
                 .header("Cookie", "qrsig=$qrsig")
                 .header("Referer", "https://xui.ptlogin2.qq.com/")
                 .build()
-            val body = httpClient.newCall(req).execute().use { it.body?.string().orEmpty() }
+            val body = httpClient.newCall(req).readResponse { it.body?.string().orEmpty() }
             // ptuiCB('66','0','','0','二维码未失效。', '')
             val regex = Regex("""ptuiCB\('(\d+)','[^']*','([^']*)','[^']*','([^']*)',\s*'([^']*)'\)""")
             val match = regex.find(body) ?: return@runCatching 66 to "等待使用手机 QQ 扫码..."
@@ -240,10 +248,12 @@ object MultiPlatformAccountManager {
 
             if (code == 0) {
                 val uinMatch = Regex("""uin=o?(\d+)""").find(jumpUrl)
-                val uin = uinMatch?.groupValues?.get(1).orEmpty().ifBlank { "10001" }
+                val uin = uinMatch?.groupValues?.get(1).orEmpty()
+                if (uin.isBlank()) return@runCatching 65 to "未取得 QQ 号，请直接输入公开资料的 QQ 号"
+                ensureActive()
                 SessionManager.qqMusicUin = uin
                 SessionManager.qqMusicNickname = nick.ifBlank { "QQ音乐用户 ($uin)" }
-                0 to "QQ音乐登录成功：${SessionManager.qqMusicNickname}"
+                0 to "已关联 QQ 公开资料：${SessionManager.qqMusicNickname}"
             } else {
                 code to msg
             }
@@ -267,113 +277,111 @@ object MultiPlatformAccountManager {
     suspend fun fetchQqUserPlaylists(): List<Playlist> = withContext(Dispatchers.IO) {
         val uin = SessionManager.qqMusicUin
         if (uin.isBlank()) return@withContext emptyList()
-        runCatching {
-            val url = "https://c.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg?cid=205360838&userid=$uin&reqfrom=1&format=json"
-            val req = Request.Builder()
-                .url(url)
-                .header("User-Agent", UA_DESKTOP)
-                .header("Referer", "https://y.qq.com/")
-                .build()
-            val body = httpClient.newCall(req).execute().use {
-                if (it.isSuccessful) it.body?.string() else null
-            } ?: return@runCatching emptyList()
+        val url = "https://c.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg?cid=205360838&userid=$uin&reqfrom=1&format=json"
+        val req = Request.Builder()
+            .url(url)
+            .header("User-Agent", UA_DESKTOP)
+            .header("Referer", "https://y.qq.com/")
+            .build()
+        val body = httpClient.newCall(req).readResponse {
+            check(it.isSuccessful) { "QQ 音乐服务暂不可用" }
+            checkNotNull(it.body).string()
+        }
 
-            val data = JSONObject(body).optJSONObject("data") ?: return@runCatching emptyList()
-            val result = mutableListOf<Playlist>()
-            val mymusic = data.optJSONArray("mymusic")
-            if (mymusic != null) {
-                for (i in 0 until mymusic.length()) {
-                    val m = mymusic.optJSONObject(i) ?: continue
-                    val id = m.optString("id")
-                    val title = m.optString("title")
-                    if (id.isNotBlank() && id != "0" && title.isNotBlank()) {
-                        result.add(
-                            Playlist(
-                                id = "tx_$id",
-                                name = "QQ · $title",
-                                coverUrl = m.optString("laypic"),
-                                trackCount = m.optInt("num0", 0),
-                                source = "tx"
-                            )
+        val data = JSONObject(body).optJSONObject("data") ?: return@withContext emptyList()
+        val result = mutableListOf<Playlist>()
+        val mymusic = data.optJSONArray("mymusic")
+        if (mymusic != null) {
+            for (i in 0 until mymusic.length()) {
+                val m = mymusic.optJSONObject(i) ?: continue
+                val id = m.optString("id")
+                val title = m.optString("title")
+                if (id.isNotBlank() && id != "0" && title.isNotBlank()) {
+                    result.add(
+                        Playlist(
+                            id = "tx_$id",
+                            name = "QQ · $title",
+                            coverUrl = m.optString("laypic"),
+                            trackCount = m.optInt("num0", 0),
+                            source = "tx"
                         )
-                    }
+                    )
                 }
             }
-            val mydiss = data.optJSONObject("mydiss")?.optJSONArray("list")
-            if (mydiss != null) {
-                for (i in 0 until mydiss.length()) {
-                    val d = mydiss.optJSONObject(i) ?: continue
-                    val dissId = d.optString("dissid")
-                    val title = d.optString("title")
-                    if (dissId.isNotBlank() && title.isNotBlank()) {
-                        result.add(
-                            Playlist(
-                                id = "tx_$dissId",
-                                name = "QQ · $title",
-                                coverUrl = d.optString("picurl"),
-                                description = d.optString("subtitle"),
-                                source = "tx"
-                            )
+        }
+        val mydiss = data.optJSONObject("mydiss")?.optJSONArray("list")
+        if (mydiss != null) {
+            for (i in 0 until mydiss.length()) {
+                val d = mydiss.optJSONObject(i) ?: continue
+                val dissId = d.optString("dissid")
+                val title = d.optString("title")
+                if (dissId.isNotBlank() && title.isNotBlank()) {
+                    result.add(
+                        Playlist(
+                            id = "tx_$dissId",
+                            name = "QQ · $title",
+                            coverUrl = d.optString("picurl"),
+                            description = d.optString("subtitle"),
+                            source = "tx"
                         )
-                    }
+                    )
                 }
             }
-            result
-        }.getOrDefault(emptyList())
+        }
+        result
     }
 
     suspend fun fetchQqPlaylistSongs(rawPlaylistId: String): List<Song> = withContext(Dispatchers.IO) {
         val dissid = rawPlaylistId.removePrefix("tx_")
-        runCatching {
-            val url = "https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg?type=1&json=1&utf8=1&onlysong=0&new_format=1&disstid=$dissid&g_tk=5381&loginUin=0&hostUin=0&format=json&inCharset=utf8&outCharset=utf-8&notice=0&platform=yqq.json&needNewCode=0"
-            val req = Request.Builder()
-                .url(url)
-                .header("User-Agent", UA_DESKTOP)
-                .header("Referer", "https://y.qq.com/")
-                .build()
-            val body = httpClient.newCall(req).execute().use {
-                if (it.isSuccessful) it.body?.string() else null
-            } ?: return@runCatching emptyList()
+        val url = "https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg?type=1&json=1&utf8=1&onlysong=0&new_format=1&disstid=$dissid&g_tk=5381&loginUin=0&hostUin=0&format=json&inCharset=utf8&outCharset=utf-8&notice=0&platform=yqq.json&needNewCode=0"
+        val req = Request.Builder()
+            .url(url)
+            .header("User-Agent", UA_DESKTOP)
+            .header("Referer", "https://y.qq.com/")
+            .build()
+        val body = httpClient.newCall(req).readResponse {
+            check(it.isSuccessful) { "QQ 音乐服务暂不可用" }
+            checkNotNull(it.body).string()
+        }
 
-            val cdlist = JSONObject(body).optJSONArray("cdlist") ?: return@runCatching emptyList()
-            if (cdlist.length() == 0) return@runCatching emptyList()
-            val songlist = cdlist.optJSONObject(0)?.optJSONArray("songlist") ?: return@runCatching emptyList()
+        val cdlist = JSONObject(body).optJSONArray("cdlist") ?: return@withContext emptyList()
+        if (cdlist.length() == 0) return@withContext emptyList()
+        val songlist = cdlist.optJSONObject(0)?.optJSONArray("songlist") ?: return@withContext emptyList()
 
-            val result = ArrayList<Song>(songlist.length())
-            for (i in 0 until songlist.length()) {
-                val item = songlist.optJSONObject(i) ?: continue
-                val mid = item.optString("mid").ifBlank { item.optString("songmid") }
-                if (mid.isBlank()) continue
-                val title = item.optString("name").ifBlank { item.optString("songname") }
-                val singerArr = item.optJSONArray("singer")
-                val artist = if (singerArr != null && singerArr.length() > 0) {
-                    (0 until singerArr.length()).joinToString(" / ") { idx ->
-                        singerArr.optJSONObject(idx)?.optString("name").orEmpty()
-                    }
-                } else "未知歌手"
-                val albumObj = item.optJSONObject("album")
-                val albumName = albumObj?.optString("name").orEmpty().ifBlank { item.optString("albumname") }
-                val albumMid = albumObj?.optString("mid").orEmpty().ifBlank { item.optString("albummid") }
-                val coverUrl = if (albumMid.isNotBlank()) {
-                    "https://y.gtimg.cn/music/photo_new/T002R500x500M000$albumMid.jpg"
-                } else ""
-                val durationMs = item.optLong("interval", 0L) * 1000L
+        val result = ArrayList<Song>(songlist.length())
+        for (i in 0 until songlist.length()) {
+            val item = songlist.optJSONObject(i) ?: continue
+            val mid = item.optString("mid").ifBlank { item.optString("songmid") }
+            if (mid.isBlank()) continue
+            val title = item.optString("name").ifBlank { item.optString("songname") }
+            val singerArr = item.optJSONArray("singer")
+            val artist = if (singerArr != null && singerArr.length() > 0) {
+                (0 until singerArr.length()).joinToString(" / ") { idx ->
+                    singerArr.optJSONObject(idx)?.optString("name").orEmpty()
+                }
+            } else "未知歌手"
+            val albumObj = item.optJSONObject("album")
+            val albumName = albumObj?.optString("name").orEmpty().ifBlank { item.optString("albumname") }
+            val albumMid = albumObj?.optString("mid").orEmpty().ifBlank { item.optString("albummid") }
+            val coverUrl = if (albumMid.isNotBlank()) {
+                "https://y.gtimg.cn/music/photo_new/T002R500x500M000$albumMid.jpg"
+            } else ""
+            val durationMs = item.optLong("interval", 0L) * 1000L
 
-                result.add(
-                    Song(
-                        id = mid,
-                        title = title,
-                        artist = artist,
-                        album = albumName,
-                        coverUrl = coverUrl,
-                        durationMs = durationMs,
-                        source = "tx",
-                        songmid = mid
-                    )
+            result.add(
+                Song(
+                    id = mid,
+                    title = title,
+                    artist = artist,
+                    album = albumName,
+                    coverUrl = coverUrl,
+                    durationMs = durationMs,
+                    source = "tx",
+                    songmid = mid
                 )
-            }
-            result
-        }.getOrDefault(emptyList())
+            )
+        }
+        result
     }
 
     // ─── 3. 酷狗音乐：酷狗号/酷狗码绑定与歌单同步 ─────────────────────────────
@@ -393,23 +401,20 @@ object MultiPlatformAccountManager {
     }
 
     suspend fun fetchKugouUserPlaylists(): List<Playlist> = withContext(Dispatchers.IO) {
-        val kgId = SessionManager.kugouUserId
-        if (kgId.isBlank()) return@withContext emptyList()
-        // 提供酷狗精选同步歌单与用户绑定歌单入口
         listOf(
             Playlist(
                 id = "kg_board_6666",
-                name = "酷狗 · 飙升热歌同步单",
-                coverUrl = "https://imge.kugou.com/stdmusic/20230101/20230101000000123456.jpg",
-                description = "酷狗账号 ($kgId) 同步精选",
+                name = "酷狗 · 公开飙升榜",
+                coverUrl = "",
+                description = "酷狗公开榜单",
                 trackCount = 100,
                 source = "kg"
             ),
             Playlist(
                 id = "kg_board_8888",
-                name = "酷狗 · 红心TOP500漫游",
+                name = "酷狗 · 公开 TOP500",
                 coverUrl = "",
-                description = "酷狗账号 ($kgId) 专属收藏",
+                description = "酷狗公开榜单",
                 trackCount = 100,
                 source = "kg"
             )

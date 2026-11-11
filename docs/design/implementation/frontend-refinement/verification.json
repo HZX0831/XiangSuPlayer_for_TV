@@ -1,0 +1,28 @@
+{
+  "unit": {
+    "app": {
+      "tests": 39,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "ncmapi": {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "lint": {
+    "Warning": 662,
+    "Hint": 3
+  },
+  "newLintProblems": [],
+  "native": {
+    "standard": 11,
+    "large": 10,
+    "compact": 10,
+    "compactLarge": 10
+  },
+  "nativeScreenshots": 52
+}

@@ -15,7 +15,19 @@ sealed interface StreamResult {
         }
 }
 
+data class ResolvedStream(
+    val sourceId: String,
+    val requestedQuality: AudioQuality,
+    val result: StreamResult,
+    val requestHeaders: Map<String, String> = emptyMap(),
+    val seekable: Boolean? = null
+) {
+    val streamUrl: String get() = result.streamUrl
+}
+
 interface ISoundSourceAdapter {
+    fun supports(song: Song): Boolean = true
+
     val sourceId: String
     val sourceName: String
     val priority: Int get() = 50

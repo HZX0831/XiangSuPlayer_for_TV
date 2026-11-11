@@ -67,7 +67,7 @@ class NeteaseSourceAdapter : ISoundSourceAdapter {
             if (isTrial) {
                 StreamResult.Trial(url = url, trialSeconds = if (freeTime > 0) freeTime else 30, sourceName = sourceName)
             } else {
-                StreamResult.Full(url = url, sourceName = sourceName)
+                StreamResult.Full(url = url, bitRate = songMap.ncmInt("br"), sourceName = sourceName)
             }
         } else {
             throw IllegalStateException("未查找到音频直链")

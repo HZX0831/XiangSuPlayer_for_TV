@@ -1,0 +1,18 @@
+{
+  "app/src/main/java/com/cutedino/xiangsuplayer/ui/components/TvCommonComponents.kt": "0f15f5b7252dfa51d7965fe6a3d1c6245e32a250f64b942cdddf2772c1a468d1",
+  "app/src/main/java/com/cutedino/xiangsuplayer/ui/components/TvPhoneInputDialog.kt": "18d5a6ee4523afa8dbc984f801e7df36f03cbaed6faac3e185584d1a45f787ff",
+  "app/src/main/java/com/cutedino/xiangsuplayer/ui/components/TvReadingText.kt": "e65ee5f9b08d4ce7e3630b7cb821a6b466ec1fa7896e4aed78d0fb053d17127f",
+  "app/src/main/java/com/cutedino/xiangsuplayer/ui/components/TvTextInput.kt": "dc1798c9b74c660d5eef9ccf14405437f1e0d125631965b8d763e5a0016f1d4e",
+  "app/src/main/java/com/cutedino/xiangsuplayer/ui/library/PlaylistDetailActivity.kt": "5954e41902524519e74107dd9899593ab74b2de7cb222200e99a75eaaf4a56b0",
+  "app/src/main/java/com/cutedino/xiangsuplayer/ui/main/MainActivity.kt": "b1b4e74f9c5a40216ba2f0ed7bf5290fab824ddb639cb336727a07c5b3b2e940",
+  "app/src/main/java/com/cutedino/xiangsuplayer/ui/main/TvFolderLibrary.kt": "598ee7cc4d77d665d758f44730061cb74c1a30437d255e9d17822d676bef72c6",
+  "app/src/main/java/com/cutedino/xiangsuplayer/ui/main/TvHomeScreen.kt": "57a80f8a5ce34bc0e5d02ade7e4f269c5cc231eea1ee11a27fa2c30afa08b88f",
+  "app/src/main/java/com/cutedino/xiangsuplayer/ui/main/TvPrimaryScreens.kt": "147af27ea7c71e17c8ed5c0085132df169f795170f92e903be21c6620d52a9c8",
+  "app/src/main/java/com/cutedino/xiangsuplayer/ui/main/TvSecondaryScreens.kt": "64e98d13e75b162f34b8d070d70bd9032914fa5ceffd5655508a803e7994de7c",
+  "app/src/main/java/com/cutedino/xiangsuplayer/ui/player/PlayerActivity.kt": "47df144c8047ee52957eeec56945067046df5e1116097b9bc54c6890cc362549",
+  "app/src/main/java/com/cutedino/xiangsuplayer/ui/player/TvKaraokeScreen.kt": "5b07dee164c1699291ca7b59400c53e2231bd15e8e3d297f5bfdeea0b2374c54",
+  "app/src/main/java/com/cutedino/xiangsuplayer/ui/theme/PixelPlayTvTheme.kt": "9b62977ca4bec375a17fabba84360c91579170d8bd5467451d9c497d1a90e1af",
+  "app/src/main/java/com/cutedino/xiangsuplayer/ui/theme/TvFocusModifiers.kt": "e524f2155bbfda9ac4e0c3d8357c71a4edb90e2f3908539118faf2b9ab4ac6d4",
+  "app/src/main/java/com/cutedino/xiangsuplayer/ui/theme/TvFocusNavigation.kt": "cc136a9ff87af82e73156af3e1bc02fddf7e5fb77362c9f2533ccdc036ee81a3",
+  "app/src/main/java/com/cutedino/xiangsuplayer/ui/theme/TvWindowSpec.kt": "077dbdc6c4216b79a3c607a532c2d61816e0d7eea04de90a4229c303a1a94d43"
+}

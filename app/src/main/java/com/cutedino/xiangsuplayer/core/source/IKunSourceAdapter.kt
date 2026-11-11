@@ -8,13 +8,14 @@ import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import net.moriafly.ncm.readResponse
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
 class IKunSourceAdapter(
-    private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
+    private val okHttpClient: OkHttpClient = SourceNetwork.configure(OkHttpClient.Builder())
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(8, TimeUnit.SECONDS)
         .build()
@@ -49,7 +50,7 @@ class IKunSourceAdapter(
                 .addHeader("User-Agent", "lx-music-request/v26")
                 .build()
 
-            okHttpClient.newCall(request).execute().use { response ->
+            okHttpClient.newCall(request).readResponse { response ->
                 if (!response.isSuccessful) {
                     throw IllegalStateException("ikun API 请求失败 HTTP ${response.code}")
                 }

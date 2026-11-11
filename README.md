@@ -1,153 +1,103 @@
-<div align="center">
+# 像素播放器 TV
 
-# 📺 像素播放器 TV (XiangSu Player for TV)
+为 Android TV 与电视盒子设计的音乐播放器，使用遥控器找歌、听歌和看歌词。
 
-**专为 Android TV 与智能电视大屏深度定制的无损/云音乐播放器**
+**v2.1.0 preview** · Android 5.0+ · Kotlin / Jetpack Compose · [GPL-3.0](LICENSE)
 
-[![Android](https://img.shields.io/badge/Platform-Android_TV_/_Box-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://developer.android.com/tv)
-[![Kotlin](https://img.shields.io/badge/Language-Kotlin_1.9.24-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)](https://kotlinlang.org/)
-[![ExoPlayer](https://img.shields.io/badge/Audio_Engine-ExoPlayer-167C80?style=for-the-badge&logo=google&logoColor=white)](https://github.com/google/ExoPlayer)
-[![License](https://img.shields.io/badge/License-GPL_v3-blue.svg?style=for-the-badge)](LICENSE)
+同一品牌，不同终端；视觉同源，体验独立。TV 版延续安卓版的封面动态配色和柔和的音乐表达，采用独立的横屏布局、文字导航与遥控器焦点交互。
 
-<br/>
+[下载与版本记录](https://github.com/HZX0831/XiangSuPlayer_for_TV/releases) · [安卓版主项目](https://github.com/r3n011/XiangsuPlayerHQ) · [设计规范](DESIGN.md) · [验收记录](docs/design/IMPLEMENTATION-REVIEW.md)
 
-[✨ 核心特性](#-核心特性) • [🎨 界面与体验](#-界面与体验) • [🛠️ 技术架构](#️-技术架构) • [🚀 快速开始](#-快速开始) • [🎮 遥控器操作](#-遥控器操作指南)
+## 界面
 
-</div>
+| 首页 | 全屏播放 |
+| --- | --- |
+| ![首页与最近播放](docs/design/implementation/frontend-refinement/standard/home-populated.png) | ![封面与歌词](docs/design/implementation/frontend-refinement/standard/player-lyrics.png) |
 
----
+截图来自原生 Compose 页面和确定性测试数据。真实在线服务的验证范围单独记录在验收记录中。
 
-## 🌟 核心特性
+## 功能
 
+| 入口 | 能力 |
+| --- | --- |
+| 首页与发现 | 继续播放、最近播放、推荐歌曲与歌单、地区新歌、私人 FM、心动模式。私人内容依赖网易云账号及服务可用性。 |
+| 搜索与榜单 | 全平台或网易云、QQ、酷狗、酷我、咪咕歌曲搜索；歌单检索、热搜、搜索历史；网易云、QQ、酷狗内置榜单。歌名、歌手、专辑可作为关键词，没有独立歌手／专辑详情页。 |
+| 曲库 | 本地歌曲收藏、网易云红心同步、个人歌单和音乐云盘；QQ 公开资料关联与公开歌单；酷狗入口提供公开榜单。 |
+| 目录 | 通过系统目录选择器授权内置存储或 U 盘，或添加只读 HTTPS WebDAV；支持 MP3、FLAC、M4A、目录层级和分页。服务器不支持 Range 时提示无法定位进度。 |
+| 播放与队列 | 前后台播放、暂停／恢复、上下首、顺序／单曲循环／随机／心动模式；可取消的进度定位、手动换源、四档请求音质；队列选曲、设为下一首、移除与清空。冷启动暂停恢复队列，按播放后再取流。 |
+| 歌词与评论 | LRC、译文、纯歌词、网易云 YRC 逐字时间与普通行回退；热门评论阅读。跨平台评论按曲名与歌手匹配，仍可能存在版本差异。 |
+| 手机输入与点歌 | 同网扫码输入搜索词；独立点歌队列和双行歌词。进入点歌暂存普通队列，退出后恢复并暂停。没有录音、评分或伴奏功能。 |
+| 音源与设置 | 市场、HTTPS 地址导入、安装／替换／启停／测速／卸载；默认音质、每日或自定义壁纸、遮罩浓度、旧版 HTTP 兼容开关。 |
 
-- **📺 视听级电视大屏适配**
-  - **无死角遥控体验**：基于 `DPadFocusHelper` 智能焦点算法，完全针对方向键（D-Pad）与确定键优化，零触摸屏依赖。
-  - **沉浸式视听界面**：横屏原生体验，支持基于专辑封面的动态 Palette 高级色彩提取、高斯模糊背景与全屏大字号高亮歌词。
-  - **全局 Mini 播放器**：在浏览歌单、搜索或设置时，底部保持全局 Mini 播放状态，支持快速唤起全屏播放。
+网易云支持扫码登录；QQ 支持扫码或 QQ 号关联**公开资料**，不等同于完整私有账号授权。歌单部分加载成功时，可先播放已加载曲目，再重试补充。
 
-- **🎵 网易云音乐原生深度对接**
-  - **大屏二维码扫码登录**：电视端一键生成安全登录二维码，使用手机网易云 App 扫码即可快捷登录。
-  - **个人云端曲库同步**：完美同步个人创建的歌单、收藏歌单、每日推荐及播放历史记录。
-  - **全网搜索与分类发现**：支持全网单曲、歌手快速搜索，精选热门歌单分类导航。
+## 遥控器
 
-- **🔌 模块化多音源架构 (Multi-Source Architecture)**
-  - 基于接口隔离设计（`ISoundSourceAdapter` & `SoundSourceRepository`），彻底解耦音源解析逻辑。
-  - 内置 `:ncmapi` 模块解析网络接口，为后续自由扩充第三方音源与本地音源打下架构基础。
+| 操作 | 行为 |
+| --- | --- |
+| 方向键 | 移动焦点。左侧五个栏目上下滚动，确定后打开；移动焦点不会开始播放。 |
+| 确定 | 执行当前动作；输入框聚焦后，按确定才进入编辑。 |
+| 返回 | 优先退出键盘或最上层面板，再返回上级；关闭面板后恢复调用项。 |
+| 进度定位 | 聚焦进度条后按确定进入预览，左右调整；再次确定跳转，返回取消。 |
+| 底部播放条 | 模式、上下首、播放／暂停；选择曲目信息进入全屏播放器。 |
+| 纯歌词 | 播放器“更多”中开启；方向键唤回控制，首次按键不同时切歌。 |
 
-- **🎧 低延迟播放引擎与精准歌词**
-  - **ExoPlayer 音频内核**：提供高稳定性、低延迟的音轨流式播放与缓冲策略。
-  - **毫秒级歌词引擎**：内置 `LyricEngine` 实时解析 LRC 格式歌词，支持自动平滑定位与滚动高亮。
-  - **持久化数据缓存**：使用 Android Jetpack Room 数据库管理播放历史，结合 `SessionManager` 进行 Cookie 与登录态管理。
+基本操作不依赖菜单键、触屏或手机。低分辨率和大字号切换紧凑布局，五个主栏目及播放控制仍保留。
 
----
+## 安装与兼容
 
-## 🎨 界面与体验
-
-| 模块 | 功能说明 |
-| :--- | :--- |
-| **🏠 发现与推荐** | 精选每日推荐、热门分类歌单，采用大卡片流式焦点平滑切换 |
-| **📚 个人曲库** | 个人歌单、收藏专辑、历史播放记录一键即达 |
-| **🎤 沉浸式播放器** | 动态渐变背景、专辑封面、高亮滚动歌词，针对电视远距离视距优化 |
-| **🔍 搜索中心** | 遥控器友好型拼音/关键字快速搜索，即时展示单曲与歌手 |
-| **📱 二维码登录** | 安全快捷的手机扫码认证弹窗 |
-
----
-
-## 🛠️ 技术架构
-
-### 核心技术栈
-
-| 维度 | 技术选型 | 说明 |
-| :--- | :--- | :--- |
-| **开发语言** | Kotlin 1.9.24 | JDK 17 运行环境 |
-| **最低兼容** | Android 5.0 (API 21+) | 目标编译版本 API 34 (Android 14) |
-| **UI 视图** | Leanback / ViewBinding / Custom Focus Engine | 响应式电视焦点 UI |
-| **播放内核** | Google ExoPlayer 2.18.7 | 高性能音频解码与流式播放 |
-| **网络与图片** | OkHttp 3 + Coil | 图片异步加载、内存与磁盘双重缓存 |
-| **本地持久化** | Room 2.6.1 + KSP | SQLite 结构化存储播放历史 |
-| **异步流控** | Kotlin Coroutines & Flow | Lifecycle & ViewModel 架构 |
-| **二维码编码** | ZXing 3.5.3 | 快速生成电视端登录二维码 |
-
-### 📁 项目工程目录结构
+在[Releases](https://github.com/HZX0831/XiangSuPlayer_for_TV/releases)选择 APK，通过电视文件管理器安装，或使用 ADB：
 
 ```text
-XiangSuPlayer_for_TV/
-├── app/                                  # 主 Android TV 应用程序模块
-│   ├── src/main/java/com/cutedino/xiangsuplayer/
-│   │   ├── App.kt                        # 全局 Application 初始化入口
-│   │   ├── core/                         # 核心功能组件库
-│   │   │   ├── audio/                    # 播放器控制器 (PlayerController) & 歌词引擎 (LyricEngine)
-│   │   │   ├── focus/                    # TV 遥控器 D-Pad 焦点算法 (DPadFocusHelper)
-│   │   │   ├── model/                    # 歌曲、歌单、歌词等核心数据模型
-│   │   │   └── source/                   # 音源适配器接口及多源仓库 (SoundSourceRepository)
-│   │   ├── data/                         # 数据访问层
-│   │   │   ├── db/                       # Room 数据库实体与 DAO 接口
-│   │   │   └── session/                  # 用户 Session & Cookie 会话管理
-│   │   └── ui/                           # 界面视图与 ViewModel 逻辑层
-│   │       ├── auth/                     # 登录与二维码弹窗
-│   │       ├── explore/                  # 推荐与歌单发现
-│   │       ├── library/                  # 个人曲库与歌单详情
-│   │       ├── main/                     # 主界面框架与全局 Mini 播放器
-│   │       ├── player/                   # 全屏沉浸式播放 Activity
-│   │       ├── search/                   # 搜索 Fragment
-│   │       └── settings/                 # 设置中心
-│   └── build.gradle.kts
-│
-├── ncmapi/                               # 网易云音乐 API 解析 SDK 独立模块
-│   └── src/main/java/net/moriafly/ncmapi/
-│
-├── build.gradle.kts                      # 根目录 Gradle 构建脚本
-└── settings.gradle.kts                   # 模块依赖配置
+adb connect <电视IP>:5555
+adb install -r <下载的APK路径>
 ```
 
----
+应用 ID 为 `com.cutedino.xiangsuplayer`。覆盖安装要求签名一致；签名不匹配时请先核对安装包来源，避免卸载丢失本地数据。
 
-## 🚀 快速开始
+这是预览版。在线服务依赖第三方接口；可用性与音质取决于账号、版权、地区、音源和设备。请求音质不是实际解码质量的保证。
 
-### 1. 开发环境要求
-- **Android Studio**: Ladybug / Jellyfish 或更高版本
-- **JDK Version**: Java 17 (或 OpenJDK 17)
-- **Android SDK**: Compile / Target SDK Level 34，Min SDK Level 21
+音源导入不会执行任意 JavaScript。HTTP 模板需有效 HTTPS `@apiBaseUrl`；其他脚本可保留，但不保证可播放。下载、单脚本及解压均有大小限制。旧版 HTTP 开关仅适用于预设的无认证音源。
 
-### 2. 克隆与构建
+## 构建与测试
 
-```bash
-# 克隆项目仓库
-git clone https://github.com/HZX0831/XiangSuPlayer_for_TV.git
-cd XiangSuPlayer_for_TV
+使用 JDK 21、SDK Platform 36 和自带 Gradle 8.13。`compileSdk 36`、`targetSdk 34`、`minSdk 21`，JVM 目标 17。在 `local.properties` 配置本机 SDK 路径。
 
-# 构建 Debug 版本 APK
-./gradlew assembleDebug
+Windows：
 
-# 构建 Release 版本 APK
-./gradlew assembleRelease
-```
-> 编译产物位于 `app/build/outputs/apk/debug/app-debug.apk`。
-
-### 3. 安装到电视或模拟器
-
-```bash
-# 1. 确保电视与电脑在同一局域网下，开启电视的 ADB 调试功能
-adb connect <电视IP地址>:5555
-
-# 2. 安装 APK
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+```powershell
+.\gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest
+.\gradlew.bat :app:testDebugUnitTest :ncmapi:testDebugUnitTest
+.\gradlew.bat :app:lintDebug :ncmapi:lintDebug
+.\gradlew.bat :app:assembleRelease
 ```
 
----
+macOS / Linux 使用 `./gradlew`。调试 APK：`app/build/outputs/apk/debug/app-debug.apk`。Release 默认输出未签名 APK，发布前需正式签名并验证；不要提交密钥、密码或本地签名配置。
 
-## 🎮 遥控器操作指南
+```text
+app/src/main/java/com/cutedino/xiangsuplayer/
+  core/           播放、歌词、音源、目录与手机输入
+  data/           数据库、会话与平台账号
+  ui/main/        首页、搜索、曲库、榜单与设置
+  ui/player/      全屏播放与双行点歌
+  ui/library/     歌单详情
+  ui/components/  共享 TV 控件与输入
+  ui/theme/       主题、窗口规格与焦点导航
+app/src/test/     JVM 回归
+app/src/androidTest/ 原生截图与设备回归
+ncmapi/           网易云接口模块
+docs/design/      品牌研究、设计与验收证据
+```
 
-| 键位 (Remote Control) | 全局 / 主界面功能 | 全屏播放界面功能 |
-| :--- | :--- | :--- |
-| **上 / 下 / 左 / 右** | 移动 UI 焦点，浏览歌单与歌曲列表 | 唤出/隐藏控制栏、调整播放进度与歌词定位 |
-| **确定 (OK / Enter)** | 打开歌单 / 播放选中的歌曲 / 唤醒 Mini 播放器 | 暂停 / 播放 |
-| **返回 (Back)** | 返回上级页面 / 关闭弹窗 | 退出全屏播放（保持后台继续播放） |
-| **菜单 (Menu)** | 呼出快捷菜单 | 切换音轨 / 歌词模式选项 |
+CI 在推送 main 或提交 PR 时运行调试构建、JVM 测试与 Lint。设备验收覆盖 960×540dp、640×360dp、1.0／1.3 字号和 D-pad 路径。具体通过记录及尚未验证的真机、账号、手机、WebDAV 场景见[验收记录](docs/design/IMPLEMENTATION-REVIEW.md)。
 
----
+## 作者与鸣谢
 
-## 📄 开源许可与免责声明
+- **Android 主项目作者：R3n_011** — [XiangsuPlayerHQ](https://github.com/r3n011/XiangsuPlayerHQ)。
+- **TV 原维护者：cutedino**。
+- **TV 现维护者：HZX0831** — [XiangSuPlayer_for_TV](https://github.com/HZX0831/XiangSuPlayer_for_TV)。
+- **鸣谢：暮间雾、忘羡**，以及 LX Music 开源社区、Moriafly 与 NeteaseCloudMusicApi 等项目的贡献者。
 
-- 本项目遵循 [GNU General Public License v3.0 (GPL-3.0)](LICENSE) 开源协议。
-- **免责声明**：本项目仅供个人技术研究、Android TV 交互探索与学术交流使用。所有音乐版权归各原唱片公司及平台权利人所有，请支持正版音频服务。
+## 许可
+
+本仓库按 [GNU General Public License v3.0](LICENSE) 提供源码。音乐版权归各权利人所有，请遵守平台条款并支持正版服务。
