@@ -12,7 +12,10 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.concurrent.ConcurrentHashMap
+import java.io.IOException
+import net.moriafly.ncm.ResponseLimitException
+import kotlinx.coroutines.delay
+import net.moriafly.ncm.NcmHttpException
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.TimeSource
 
@@ -73,11 +76,7 @@ object SoundSourceRepository {
 
     fun getAllAdapters(): List<ISoundSourceAdapter> = builtInAdapters + dynamicAdapters
 
-    // 音源健康度与熔断管理 (失败计数与冷却时间)
-    private val failureCounts = ConcurrentHashMap<String, Int>()
-    private val cooldownTimestamps = ConcurrentHashMap<String, Long>()
-    private const val MAX_FAILURE_THRESHOLD = 3
-    private const val COOLDOWN_DURATION_MS = 60_000L // 熔断 60 秒
+    private val health = SourceHealth()
 
     var activeMode: String = "auto_race"
     @Volatile var enabledSourceIds: Set<String> = setOf(
@@ -107,11 +106,12 @@ object SoundSourceRepository {
     suspend fun getStreamUrlFromSource(
         sourceId: String,
         song: Song,
-        quality: AudioQuality
+        quality: AudioQuality,
+        rejectedMiguUrl: String? = null
     ): Result<ResolvedStream> = withContext(Dispatchers.IO) {
         val adapter = getAllAdapters().firstOrNull { it.sourceId == sourceId && isEnabled(it, song) }
             ?: return@withContext Result.failure(IllegalArgumentException("此曲目无法使用该音源"))
-        withTimeoutOrNull(RESOLVE_BUDGET_MS) { resolve(adapter, song, quality) }
+        withTimeoutOrNull(RESOLVE_BUDGET_MS) { resolve(adapter, song, quality, rejectedMiguUrl) }
             ?: Result.failure(IllegalStateException("音源解析超时"))
     }
 
@@ -139,46 +139,65 @@ object SoundSourceRepository {
     /**
      * 多音源智能并行竞速与跨平台换源回退引擎
      */
-    private const val RESOLVE_BUDGET_MS = 4_500L
+    internal const val RESOLVE_BUDGET_MS = 4_500L
 
     suspend fun getStreamUrl(
         song: Song,
         quality: AudioQuality,
-        preferredSourceId: String? = null
+        preferredSourceId: String? = null,
+        excludedSources: Set<String> = emptySet(),
+        budgetMs: Long = RESOLVE_BUDGET_MS,
+        rejectedMiguUrl: String? = null
     ): Result<ResolvedStream> = withContext(Dispatchers.IO) {
         val started = TimeSource.Monotonic.markNow()
-        val enabled = getAllAdapters().filter { isEnabled(it, song) }
+        val enabled = getAllAdapters().filter { it.sourceId !in excludedSources && isEnabled(it, song) }
         val preferred = enabled.firstOrNull { it.sourceId == preferredSourceId }
         val first = preferred?.let { adapter ->
-            withTimeoutOrNull(1_500L) { resolve(adapter, song, quality).getOrNull() }
+            withTimeoutOrNull(budgetMs.coerceIn(0L, 1_500L)) { resolveAndRecord(adapter, song, quality, rejectedMiguUrl) }
         }
         if (first?.result is StreamResult.Full) return@withContext Result.success(first)
-        val candidates = enabled.filter { it != preferred }
-        val healthy = candidates.filter { isAdapterHealthy(it.sourceId) }
-        val racers = healthy.ifEmpty { candidates }.sortedByDescending { it.priority }
-        val remaining = (RESOLVE_BUDGET_MS - started.elapsedNow().inWholeMilliseconds).coerceAtLeast(0L)
-        val winner = raceStreams(racers, remaining, first) { adapter ->
-            val result = resolve(adapter, song, quality).getOrNull()
-            currentCoroutineContext().ensureActive()
-            if (result == null) markAdapterFailure(adapter.sourceId)
-            else markAdapterSuccess(adapter.sourceId)
-            result
+        val candidates = enabled.filter { it != preferred }.sortedByDescending { it.priority }
+        val healthy = candidates.filter { !health.isCoolingDown(it.sourceId) }
+        val remaining = (budgetMs - started.elapsedNow().inWholeMilliseconds).coerceAtLeast(0L)
+        val winner = raceStreams(candidates, remaining, first) { adapter ->
+            if (healthy.isNotEmpty() && adapter !in healthy) delay(minOf(500L, remaining / 3))
+            resolveAndRecord(adapter, song, quality, rejectedMiguUrl)
         }
         winner?.let { Result.success(it) }
             ?: Result.failure(IllegalStateException("没有可靠的可播放音源"))
     }
+
+    private suspend fun resolveAndRecord(
+        adapter: ISoundSourceAdapter, song: Song, quality: AudioQuality, rejectedMiguUrl: String?
+    ): ResolvedStream? {
+        val result = resolve(adapter, song, quality, rejectedMiguUrl)
+        currentCoroutineContext().ensureActive()
+        val error = result.exceptionOrNull()
+        when {
+            error == null -> health.recordSuccess(adapter.sourceId)
+            isTransportFailure(error) -> health.recordTransportFailure(adapter.sourceId)
+        }
+        return result.getOrNull()
+    }
+
+    internal fun hasUntriedSource(song: Song, excluded: Set<String>): Boolean =
+        getAllAdapters().any { it.sourceId !in excluded && isEnabled(it, song) }
 
     private fun isEnabled(adapter: ISoundSourceAdapter, song: Song): Boolean =
         adapter.supports(song) &&
             SourceEnablement.isEnabled(adapter.sourceId, enabledSourceIds, disabledLxSourceIds) &&
             (song.key.sourceId == "wy" || adapter == crossPlatformAdapter || SourceEnablement.isLx(adapter.sourceId))
 
-    private suspend fun resolve(adapter: ISoundSourceAdapter, song: Song, quality: AudioQuality): Result<ResolvedStream> =
+    private suspend fun resolve(
+        adapter: ISoundSourceAdapter, song: Song, quality: AudioQuality, rejectedMiguUrl: String?
+    ): Result<ResolvedStream> =
         try {
-            val result = adapter.getStreamUrl(song, quality).getOrThrow()
+            val result = if (adapter === crossPlatformAdapter && rejectedMiguUrl != null) {
+                BuiltInSourceSearchApi.resolvePlatformStream(song, quality, rejectedMiguUrl).getOrThrow()
+            } else adapter.getStreamUrl(song, quality).getOrThrow()
             currentCoroutineContext().ensureActive()
-            require(SourceNetwork.allowsPlayback(result.streamUrl, allowLegacy = !SourceEnablement.isLx(adapter.sourceId))) {
-                "播放地址不符合音源安全设置"
+            if (!SourceNetwork.allowsPlayback(result.streamUrl, allowLegacy = !SourceEnablement.isLx(adapter.sourceId))) {
+                throw SourcePolicyException("播放地址不符合音源安全设置")
             }
             Result.success(ResolvedStream(adapter.sourceId, quality, result))
         } catch (cancelled: CancellationException) {
@@ -201,25 +220,54 @@ object SoundSourceRepository {
         }
     }
 
-    private fun isAdapterHealthy(sourceId: String): Boolean {
-        val cooldownUntil = cooldownTimestamps[sourceId] ?: 0L
-        return System.currentTimeMillis() >= cooldownUntil
+}
+
+internal fun isTransportFailure(error: Throwable): Boolean = when (error) {
+    is NcmHttpException -> error.status in 500..599
+    is SourceHttpException -> error.status in 500..599
+    is SourcePolicyException, is ResponseLimitException -> false
+    is IOException -> true
+    else -> false
+}
+
+internal class SourceHealth(private val nanoTime: () -> Long = System::nanoTime) {
+    private data class Failure(val count: Int, val until: Long?)
+    private val failures = mutableMapOf<String, Failure>()
+
+    @Synchronized
+    fun isCoolingDown(id: String): Boolean = failures[id]?.until?.let { nanoTime() - it < 0 } ?: false
+
+    @Synchronized
+    fun recordSuccess(id: String) {
+        failures.remove(id)
     }
 
-    private fun markAdapterSuccess(sourceId: String) {
-        failureCounts[sourceId] = 0
-        cooldownTimestamps.remove(sourceId)
-    }
-
-    private fun markAdapterFailure(sourceId: String) {
-        val currentFailures = (failureCounts[sourceId] ?: 0) + 1
-        failureCounts[sourceId] = currentFailures
-        if (currentFailures >= MAX_FAILURE_THRESHOLD) {
-            cooldownTimestamps[sourceId] = System.currentTimeMillis() + COOLDOWN_DURATION_MS
-        }
+    @Synchronized
+    fun recordTransportFailure(id: String) {
+        val previous = failures[id]
+        val now = nanoTime()
+        val count = if (previous == null || previous.until?.let { now - it >= 0 } == true) 1 else previous.count + 1
+        failures[id] = Failure(count, if (count >= 3) now + 60_000_000_000L else null)
     }
 }
 
+internal class SourceFallback {
+    private var failure: Exception? = null
+
+    suspend fun <T> attempt(block: suspend () -> T): T? = try {
+        block()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Exception) {
+        if (failure == null || isTransportFailure(error)) failure = error
+        null
+    }
+
+    fun exhausted(message: String): Nothing = throw (failure ?: IllegalStateException(message))
+}
+
+internal class SourceHttpException(val status: Int) : IOException("Audio source HTTP $status")
+internal class SourcePolicyException(message: String) : IOException(message)
 
 internal suspend fun <T> raceStreams(
     candidates: List<T>,

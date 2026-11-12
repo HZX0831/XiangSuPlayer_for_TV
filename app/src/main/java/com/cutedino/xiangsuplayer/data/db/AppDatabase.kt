@@ -8,8 +8,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [SongEntity::class, PlayHistoryEntity::class],
-    version = 3,
+    entities = [SongEntity::class, PlayHistoryEntity::class, FavoriteSyncEntry::class],
+    version = 4,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -32,8 +32,24 @@ abstract class AppDatabase : RoomDatabase() {
 
         internal fun build(context: Context, name: String): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, name)
-                .addMigrations(migrateToThree(1), migrateToThree(2))
+                .addMigrations(migrateToThree(1), migrateToThree(2), migrateToFour)
                 .build()
+
+        private val migrateToFour = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE favorite_sync (
+                        accountId INTEGER NOT NULL, trackId INTEGER NOT NULL, liked INTEGER NOT NULL,
+                        token TEXT NOT NULL, attempts INTEGER NOT NULL, retryAtMs INTEGER NOT NULL,
+                        PRIMARY KEY(accountId, trackId)
+                    )""".trimIndent()
+                )
+                db.execSQL("DELETE FROM play_history WHERE rowid NOT IN (SELECT rowid FROM play_history ORDER BY playedAtMs DESC, rowid DESC LIMIT 200)")
+                for (table in listOf("favorite_songs", "play_history")) {
+                    db.execSQL("UPDATE $table SET songmid = '' WHERE instr(songmid, '://') > 0 OR substr(songmid, 1, 2) = '//'")
+                }
+            }
+        }
 
         private fun migrateToThree(from: Int) = object : Migration(from, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {

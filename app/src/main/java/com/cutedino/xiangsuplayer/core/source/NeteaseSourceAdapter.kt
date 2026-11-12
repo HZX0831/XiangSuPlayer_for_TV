@@ -49,7 +49,7 @@ class NeteaseSourceAdapter : ISoundSourceAdapter {
 
     override suspend fun getStreamUrl(song: Song, quality: AudioQuality): Result<StreamResult> = runCatching {
         val res = NcmApi.songUrlV1(ids = listOf(song.id), level = quality.level)
-        val detailMap = res.getOrNull() ?: throw IllegalStateException("网易云 API 无响应")
+        val detailMap = res.getOrThrow()
         val dataList = detailMap.ncmList("data")
         if (dataList.isNotEmpty()) {
             val map = dataList[0] as? Map<*, *> ?: throw IllegalStateException("无效的数据对象")

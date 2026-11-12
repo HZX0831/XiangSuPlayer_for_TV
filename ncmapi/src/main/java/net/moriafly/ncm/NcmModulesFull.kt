@@ -55,7 +55,7 @@ object NcmModulesFull {
         realIp: String? = null,
         url: String? = null,
     ): Result<Map<String, Any?>> = withContext(Dispatchers.IO) {
-        runCatching { NcmRequest.weapi(path, params, realIp, url).getOrThrow().body }
+        runCatching { NcmRequest.weapi(path, params, realIp, url).getOrThrow().checkedBody() }
     }
 
     suspend fun rawEapi(
@@ -64,7 +64,7 @@ object NcmModulesFull {
         realIp: String? = null,
         url: String? = null,
     ): Result<Map<String, Any?>> = withContext(Dispatchers.IO) {
-        runCatching { NcmRequest.eapi(path, params, realIp, url).getOrThrow().body }
+        runCatching { NcmRequest.eapi(path, params, realIp, url).getOrThrow().checkedBody() }
     }
 
     suspend fun rawLinuxapi(
@@ -72,7 +72,7 @@ object NcmModulesFull {
         params: Map<String, Any?>,
         url: String? = null,
     ): Result<Map<String, Any?>> = withContext(Dispatchers.IO) {
-        runCatching { NcmRequest.linuxapi(path, params, url).getOrThrow().body }
+        runCatching { NcmRequest.linuxapi(path, params, url).getOrThrow().checkedBody() }
     }
 
     // ============================================================================================
@@ -1462,11 +1462,11 @@ object NcmModulesFull {
     // 补充：登录（login.js 邮箱/账号通用）
     // ============================================================================================
 
-    suspend fun loginEmail(email: String, passwordMd5: String) = rawWeapi(
+    suspend fun loginEmail(email: String, passwordMd5: String) = NcmModules.login(
         "/api/login",
         mapOf("email" to email, "password" to passwordMd5, "rememberLogin" to true)
     )
-    suspend fun loginCellphoneV2(phone: String, captcha: String, ctcode: String = "86") = rawWeapi(
+    suspend fun loginCellphoneV2(phone: String, captcha: String, ctcode: String = "86") = NcmModules.login(
         "/api/w/login/cellphone/v2",
         mapOf("phone" to phone, "captcha" to captcha, "ctcode" to ctcode, "rememberLogin" to true)
     )

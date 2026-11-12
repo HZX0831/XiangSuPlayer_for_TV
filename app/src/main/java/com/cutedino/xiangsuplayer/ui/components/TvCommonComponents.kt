@@ -94,6 +94,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
@@ -205,8 +207,8 @@ fun TvWavyMusicSlider(
                 if (isFocused) Color.White.copy(alpha = 0.1f) else Color.Transparent
             )
             .border(
-                width = if (isFocused) 1.5.dp else 0.dp,
-                color = if (isFocused) strokeColor.copy(alpha = 0.85f) else Color.Transparent,
+                width = 2.dp,
+                color = if (isFocused) strokeColor else Color.Transparent,
                 shape = RoundedCornerShape(12.dp)
             )
             .onKeyEvent { event ->
@@ -352,7 +354,7 @@ fun TvNavigationRail(selectedTab: TvMainTab, onSelectTab: (TvMainTab) -> Unit,
 fun TvMiniPlayer(currentSong: Song?, isPlaying: Boolean, playMode: PlayMode, progress: Float,
     streamResult: StreamResult?, onTogglePlayPause: () -> Unit, onPlayNext: () -> Unit,
     onPlayPrev: () -> Unit, onTogglePlayMode: () -> Unit, onOpenFullPlayer: () -> Unit,
-    modifier: Modifier = Modifier, failure: String? = null) {
+    modifier: Modifier = Modifier, failure: String? = null, showArtwork: Boolean = true) {
     val song = currentSong ?: return
     Column(modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
         Box(Modifier.fillMaxWidth().height(2.dp).background(MaterialTheme.colorScheme.surfaceVariant)) {
@@ -363,7 +365,7 @@ fun TvMiniPlayer(currentSong: Song?, isPlaying: Boolean, playMode: PlayMode, pro
             Row(Modifier.weight(1f).tvFocusableCard(focusKey = "mini/info", onClick = onOpenFullPlayer)
                 .padding(6.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                TvArtwork(song.coverUrl, Modifier.size(48.dp))
+                if (showArtwork) TvArtwork(song.coverUrl, Modifier.size(48.dp))
                 Column(Modifier.weight(1f)) {
                     Text(song.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(failure ?: listOf(song.artist, if (isPlaying) "正在播放" else "已暂停").filter(String::isNotBlank).joinToString(" · "),
@@ -465,6 +467,16 @@ internal fun TvDialogPanel(
 }
 
 @Composable
+internal fun TvStatusText(text: String, modifier: Modifier = Modifier, error: Boolean = false) {
+    Text(
+        text,
+        modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall
+    )
+}
+
+@Composable
 internal fun TvTextAction(
     label: String,
     modifier: Modifier = Modifier,
@@ -472,14 +484,16 @@ internal fun TvTextAction(
     primary: Boolean = false,
     enabled: Boolean = true,
     busy: Boolean = false,
+    focusKey: String? = null,
+    contentAlignment: Alignment = Alignment.Center,
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
     Box(
-        modifier.tvPillFocusable(isSelected = selected, isPrimary = primary, enabled = enabled, busy = busy, onFocusChanged = { focused = it }, onClick = onClick)
+        modifier.tvPillFocusable(isSelected = selected, isPrimary = primary, enabled = enabled, busy = busy, focusKey = focusKey, onFocusChanged = { focused = it }, onClick = onClick)
             .heightIn(min = 48.dp)
             .padding(horizontal = 14.dp, vertical = 6.dp),
-        contentAlignment = Alignment.Center
+        contentAlignment = contentAlignment
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(if (busy) label + " · " + stringResource(R.string.tv_processing) else label, style = MaterialTheme.typography.labelLarge,

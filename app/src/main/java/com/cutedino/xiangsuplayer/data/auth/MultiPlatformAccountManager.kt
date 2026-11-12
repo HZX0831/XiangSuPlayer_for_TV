@@ -5,13 +5,16 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import com.cutedino.xiangsuplayer.core.model.Playlist
 import com.cutedino.xiangsuplayer.core.model.Song
-import com.cutedino.xiangsuplayer.core.model.SongKey
+import com.cutedino.xiangsuplayer.core.source.builtin.BuiltInSourceSearchApi
+import com.cutedino.xiangsuplayer.core.source.builtin.matchesRecording
 import com.cutedino.xiangsuplayer.core.model.toSong
 import com.cutedino.xiangsuplayer.data.session.SessionManager
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.moriafly.ncm.readResponse
+import net.moriafly.ncm.readBounded
 import net.moriafly.ncm.NcmApi
 import net.moriafly.ncm.ncmInt
 import net.moriafly.ncm.ncmList
@@ -37,10 +40,6 @@ data class QqQrSession(
     val qrsig: String
 )
 
-internal suspend fun resolveNeteaseCommentId(song: Song, search: suspend (String) -> String): String =
-    if (song.key.sourceId == "wy" && song.id.isNotBlank() && song.id.all(Char::isDigit)) song.id
-    else search("${song.title} ${song.artist}")
-
 /**
  * 多平台账号、私人FM、心动模式、歌单同步与热评管理器
  * 支持：
@@ -57,6 +56,8 @@ object MultiPlatformAccountManager {
             .followRedirects(false)
             .build()
     }
+
+    private val qqAttempts = QqQrAttempts()
 
     private const val UA_DESKTOP =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -146,27 +147,12 @@ object MultiPlatformAccountManager {
             }
         }
 
-    suspend fun syncNeteaseLike(key: SongKey, like: Boolean): Boolean = withContext(Dispatchers.IO) {
-        val songId = key.trackId
-        if (key.sourceId != "wy" || !NcmApi.isLogin || songId.toLongOrNull()?.let { it > 0 } != true) {
-            return@withContext false
-        }
-        runCatching {
-            val res = NcmApi.full.like(id = songId, like = like)
-            res.getOrNull()?.ncmInt("code") == 200
-        }.getOrDefault(false)
-    }
-
     @Suppress("UNCHECKED_CAST")
     suspend fun fetchSongHotComments(song: Song): List<SongCommentItem> = withContext(Dispatchers.IO) {
         runCatching {
-            val targetId = resolveNeteaseCommentId(song) { query ->
-                // 非网易云歌曲通过歌名匹配网易云 ID 拉取乐评
-                val searchRes = NcmApi.search(query, limit = 1).getOrNull()
-                val first = searchRes?.ncmObj("result")?.ncmList("songs")?.firstOrNull() as? Map<String, Any?>
-                first?.ncmLong("id")?.toString().orEmpty()
-            }
-            if (targetId.isBlank()) return@runCatching emptyList()
+            val targetId = resolveNeteaseCommentTrack(song) { query ->
+                BuiltInSourceSearchApi.searchSongs("wy", query, limit = 5).getOrThrow()
+            } ?: return@runCatching emptyList()
 
             val res = NcmApi.full.commentMusic(id = targetId, limit = 25)
             val data = res.getOrNull() ?: return@runCatching emptyList()
@@ -193,6 +179,7 @@ object MultiPlatformAccountManager {
 
     suspend fun prepareQqQr(): Result<QqQrSession> = withContext(Dispatchers.IO) {
         runCatching {
+            val attempt = qqAttempts.restart()
             val t = Math.random()
             val url = "https://ssl.ptlogin2.qq.com/ptqrshow?appid=716027609&e=2&l=M&s=4&d=72&v=4&t=$t&daid=383&pt_3rd_aid=100497308"
             val req = Request.Builder()
@@ -211,10 +198,14 @@ object MultiPlatformAccountManager {
                         break
                     }
                 }
-                val bytes = resp.body?.bytes() ?: throw IllegalStateException("图片为空")
+                if (qrsig.isBlank()) throw QqQrException("QQ 扫码响应缺少会话信息，请刷新二维码")
+                val bytes = resp.body?.readBounded(512 * 1024) ?: throw IllegalStateException("图片为空")
                 val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                     ?: throw IllegalStateException("二维码解析失败")
                 QqQrSession(qrBitmap = bmp, qrsig = qrsig)
+            }.also {
+                ensureActive()
+                check(qqAttempts.publish(attempt, it.qrsig)) { "QQ 二维码已失效，请刷新" }
             }
         }
     }
@@ -228,7 +219,8 @@ object MultiPlatformAccountManager {
      * - 0: 登录成功 (自动保存 QQ 号与昵称)
      */
     suspend fun checkQqQrStatus(qrsig: String): Pair<Int, String> = withContext(Dispatchers.IO) {
-        runCatching {
+        val attempt = qqAttempts.current(qrsig) ?: return@withContext 65 to "QQ 二维码已失效，请刷新"
+        try {
             val ptqrtoken = hash33(qrsig)
             val url = "https://ssl.ptlogin2.qq.com/ptqrlogin?u1=https%3A%2F%2Fgraph.qq.com%2Foauth2.0%2Flogin_jump&ptqrtoken=$ptqrtoken&ptredirect=0&h=1&t=1&g=1&from_ui=1&ptlang=2052&action=0-0-${System.currentTimeMillis()}&js_ver=20102616&js_type=1&login_sig=&pt_uistyle=40&aid=716027609&daid=383&pt_3rd_aid=100497308"
             val req = Request.Builder()
@@ -237,11 +229,15 @@ object MultiPlatformAccountManager {
                 .header("Cookie", "qrsig=$qrsig")
                 .header("Referer", "https://xui.ptlogin2.qq.com/")
                 .build()
-            val body = httpClient.newCall(req).readResponse { it.body?.string().orEmpty() }
+            val body = httpClient.newCall(req).readResponse { response ->
+                if (!response.isSuccessful) throw QqQrException("QQ 扫码请求失败（HTTP " + response.code + "）")
+                response.body?.readBounded(4 * 1024 * 1024)?.toString(Charsets.UTF_8).orEmpty()
+            }
             // ptuiCB('66','0','','0','二维码未失效。', '')
             val regex = Regex("""ptuiCB\('(\d+)','[^']*','([^']*)','[^']*','([^']*)',\s*'([^']*)'\)""")
-            val match = regex.find(body) ?: return@runCatching 66 to "等待使用手机 QQ 扫码..."
-            val code = match.groupValues[1].toIntOrNull() ?: 66
+            val match = regex.find(body) ?: throw QqQrException("QQ 扫码响应格式错误，请刷新二维码")
+            val code = match.groupValues[1].toIntOrNull()
+                ?: throw QqQrException("QQ 扫码状态无效，请刷新二维码")
             val jumpUrl = match.groupValues[2]
             val msg = match.groupValues[3]
             val nick = match.groupValues[4]
@@ -249,26 +245,35 @@ object MultiPlatformAccountManager {
             if (code == 0) {
                 val uinMatch = Regex("""uin=o?(\d+)""").find(jumpUrl)
                 val uin = uinMatch?.groupValues?.get(1).orEmpty()
-                if (uin.isBlank()) return@runCatching 65 to "未取得 QQ 号，请直接输入公开资料的 QQ 号"
+                if (uin.isBlank()) return@withContext 65 to "未取得 QQ 号，请直接输入公开资料的 QQ 号"
                 ensureActive()
-                SessionManager.qqMusicUin = uin
-                SessionManager.qqMusicNickname = nick.ifBlank { "QQ音乐用户 ($uin)" }
-                0 to "已关联 QQ 公开资料：${SessionManager.qqMusicNickname}"
+                val nickname = nick.ifBlank { "QQ音乐用户 (" + uin + ")" }
+                if (!qqAttempts.complete(attempt) {
+                        SessionManager.qqMusicUin = uin
+                        SessionManager.qqMusicNickname = nickname
+                    }) return@withContext 65 to "QQ 二维码已失效，请刷新"
+                0 to "已关联 QQ 公开资料：$nickname"
             } else {
                 code to msg
             }
-        }.getOrDefault(66 to "等待扫码...")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: QqQrException) {
+            -1 to failure.message.orEmpty()
+        } catch (_: Exception) {
+            -1 to "QQ 扫码请求失败，请刷新二维码"
+        }
     }
 
     fun bindQqByUin(uin: String, nickname: String = "") {
         val cleaned = uin.trim()
-        if (cleaned.isNotEmpty()) {
+        if (cleaned.isNotEmpty()) qqAttempts.invalidate {
             SessionManager.qqMusicUin = cleaned
             SessionManager.qqMusicNickname = nickname.ifBlank { "QQ音乐 ($cleaned)" }
         }
     }
 
-    fun logoutQq() {
+    fun logoutQq() = qqAttempts.invalidate {
         SessionManager.qqMusicUin = ""
         SessionManager.qqMusicNickname = ""
         SessionManager.qqMusicCookie = ""
@@ -285,7 +290,7 @@ object MultiPlatformAccountManager {
             .build()
         val body = httpClient.newCall(req).readResponse {
             check(it.isSuccessful) { "QQ 音乐服务暂不可用" }
-            checkNotNull(it.body).string()
+            checkNotNull(it.body).readBounded(4 * 1024 * 1024).toString(Charsets.UTF_8)
         }
 
         val data = JSONObject(body).optJSONObject("data") ?: return@withContext emptyList()
@@ -341,7 +346,7 @@ object MultiPlatformAccountManager {
             .build()
         val body = httpClient.newCall(req).readResponse {
             check(it.isSuccessful) { "QQ 音乐服务暂不可用" }
-            checkNotNull(it.body).string()
+            checkNotNull(it.body).readBounded(4 * 1024 * 1024).toString(Charsets.UTF_8)
         }
 
         val cdlist = JSONObject(body).optJSONArray("cdlist") ?: return@withContext emptyList()
@@ -427,5 +432,53 @@ object MultiPlatformAccountManager {
             e += (e shl 5) + ch.code
         }
         return 2147483647 and e
+    }
+}
+
+
+internal suspend fun resolveNeteaseCommentTrack(song: Song, search: suspend (String) -> List<Song>): String? {
+    return when (song.key.sourceId) {
+        "wy" -> song.id.toLongOrNull()?.takeIf { it > 0L }?.toString()
+        "tx", "kg", "kw", "mg" -> search("${song.title} ${song.artist}").firstOrNull {
+            it.key.sourceId == "wy" && it.id.toLongOrNull()?.let { id -> id > 0L } == true &&
+                matchesRecording(song, it)
+        }?.id
+        else -> null
+    }
+}
+
+internal class QqQrException(message: String) : IllegalStateException(message)
+
+internal class QqQrAttempts {
+    private var version = 0L
+    private var signature: String? = null
+
+    @Synchronized
+    fun restart(): Long {
+        signature = null
+        return ++version
+    }
+
+    @Synchronized
+    fun publish(attempt: Long, qrsig: String): Boolean {
+        if (attempt != version) return false
+        signature = qrsig
+        return true
+    }
+
+    @Synchronized
+    fun current(qrsig: String): Long? = version.takeIf { signature == qrsig }
+
+    @Synchronized
+    fun complete(attempt: Long, write: () -> Unit): Boolean {
+        if (attempt != version || signature == null) return false
+        invalidate(write)
+        return true
+    }
+
+    @Synchronized
+    fun invalidate(write: () -> Unit) {
+        restart()
+        write()
     }
 }

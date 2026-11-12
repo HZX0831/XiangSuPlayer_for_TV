@@ -130,7 +130,8 @@ private fun TvMainAppScreen(
     val page = pages.getValue(selectedTab)
     var miniFromNavigation by remember { mutableStateOf(false) }
     val pageStates = rememberSaveableStateHolder()
-    val accountSummary = remember(accountRefreshTick) { MultiPlatformAccountManager.getAccountSummaryText() }
+    val ncmAccount by net.moriafly.ncm.NcmApi.accountState.collectAsState()
+    val accountSummary = remember(accountRefreshTick, ncmAccount) { MultiPlatformAccountManager.getAccountSummaryText() }
     val useWallpaper = remember(themeRefreshTick) { SessionManager.useWallpaperBackground }
     val wallpaperUrl = remember(themeRefreshTick) { SessionManager.customWallpaperUrl }
     val wallpaperOpacity = remember(themeRefreshTick) { SessionManager.wallpaperOpacityPercent }
@@ -160,6 +161,10 @@ private fun TvMainAppScreen(
                 selectedTab = childParent
             }
             !navigation.hasFocus -> navigationFocusRequest++
+            selectedTab != TvMainTab.EXPLORE -> {
+                selectedTab = TvMainTab.EXPLORE
+                navigationFocusRequest++
+            }
             else -> onExitApp()
         }
     }
@@ -168,7 +173,7 @@ private fun TvMainAppScreen(
         TvImmersiveBackdrop(null, useWallpaper, wallpaperUrl, wallpaperOpacity)
         TvBrowseFrame(navigation = {
                 CompositionLocalProvider(LocalTvFocusMemory provides navigation) {
-                    TvNavigationRail(selectedTab, { selectedTab = it }, selectedNavigation,
+                    TvNavigationRail(if (selectedTab in moreChildren) childParent else selectedTab, { selectedTab = it }, selectedNavigation,
                         Modifier.onFocusChanged { if (it.hasFocus) miniFromNavigation = true }.tvFocusGroup { direction -> when (direction) {
                             FocusDirection.Right -> page.preferred()
                             FocusDirection.Down -> mini.preferred()
@@ -213,7 +218,7 @@ private fun TvMainAppScreen(
                                 }
                                 true
                             } else false
-                        })
+                        }, showArtwork = selectedTab != TvMainTab.EXPLORE)
             }
         })
     }
@@ -273,7 +278,7 @@ private fun TvMoreRow(title: String, icon: ImageVector, onClick: () -> Unit, sub
 
 /** The progress clock is collected here so browsing pages do not recompose on every tick. */
 @Composable
-internal fun TvConnectedMiniPlayer(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier) {
+internal fun TvConnectedMiniPlayer(onOpenPlayer: () -> Unit, modifier: Modifier = Modifier, showArtwork: Boolean = true) {
     val song by PlayerController.currentSong.observeAsState()
     val playing by PlayerController.isPlaying.observeAsState(false)
     val mode by PlayerController.playMode.observeAsState(PlayMode.SEQUENCE)
@@ -285,6 +290,6 @@ internal fun TvConnectedMiniPlayer(onOpenPlayer: () -> Unit, modifier: Modifier 
     PixelPlayTvTheme(coverUrl = song?.coverUrl) {
         TvMiniPlayer(song, playing, mode, progress, stream, PlayerController::togglePlayPause,
             PlayerController::playNext, PlayerController::playPrevious, PlayerController::togglePlayMode,
-            onOpenPlayer, modifier, failure)
+            onOpenPlayer, modifier, failure, showArtwork)
     }
 }

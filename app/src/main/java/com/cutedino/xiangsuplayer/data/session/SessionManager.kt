@@ -58,7 +58,7 @@ object SessionManager {
             )
             if (!::prefs.isInitialized) return defaults
             val raw = prefs.getString("enabled_sound_sources", null)
-            if (raw.isNullOrBlank()) return defaults
+            if (raw == null) return defaults
             return raw.split(",").filter { it.isNotBlank() }.toSet()
         }
         set(value) {

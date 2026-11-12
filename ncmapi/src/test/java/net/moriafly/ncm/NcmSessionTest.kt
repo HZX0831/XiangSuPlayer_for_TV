@@ -17,9 +17,10 @@ class NcmSessionTest {
         val releaseFirst = CountDownLatch(1)
         val secondStarted = CountDownLatch(1)
         val secondApplied = CountDownLatch(1)
-        val gate = java.util.concurrent.atomic.AtomicBoolean(true)
+        val gate = java.util.concurrent.atomic.AtomicBoolean(false)
         val sp = Proxy.newProxyInstance(javaClass.classLoader, arrayOf(SharedPreferences::class.java)) { _, method, args ->
             when (method.name) {
+                "getLong" -> args!![1]
                 "getString" -> {
                     val captured = values[args!![0]] ?: args[1]
                     if (gate.compareAndSet(true, false)) {
@@ -35,7 +36,7 @@ class NcmSessionTest {
                             "putString" -> { pending = params!![0] as String to params[1] as String; proxy }
                             "apply" -> {
                                 pending?.let { values[it.first] = it.second }
-                                if (values["cookies"]?.contains("__csrf=") == true) secondApplied.countDown()
+                                if (values["cookies"]?.contains("__csrf") == true) secondApplied.countDown()
                                 null
                             }
                             else -> error("Unexpected editor call: ${edit.name}")
@@ -46,11 +47,13 @@ class NcmSessionTest {
             }
         } as SharedPreferences
         val session = NcmSession(sp)
+        val state = session.snapshot()
+        gate.set(true)
         val pool = Executors.newFixedThreadPool(2)
         try {
-            val first = pool.submit { session.merge(listOf("MUSIC_U=login; Path=/")) }
+            val first = pool.submit { session.merge(state, listOf("MUSIC_U=login; Path=/")) }
             assertTrue(firstRead.await(2, TimeUnit.SECONDS))
-            val second = pool.submit { secondStarted.countDown(); session.merge(mapOf("__csrf" to "csrf")) }
+            val second = pool.submit { secondStarted.countDown(); session.merge(state, listOf("__csrf=csrf")) }
             assertTrue(secondStarted.await(2, TimeUnit.SECONDS))
             // Without a session lock the second response commits before the first,
             // then the first response overwrites it with its stale snapshot.

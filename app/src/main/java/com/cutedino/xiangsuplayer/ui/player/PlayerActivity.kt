@@ -90,6 +90,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -102,6 +103,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -202,7 +205,7 @@ fun TvFullPlayerScreen(onFinish: () -> Unit) {
             else if (controls.lastFocused == null || !controls.restore()) playbackFocus.tryRequestFocus()
         }
     }
-    LaunchedEffect(song?.source, song?.id) {
+    LaunchedEffect(song?.key, playback.currentEntryId, playback.seekable) {
         previewPosition = null
     }
     LaunchedEffect(lastInteraction, isPlaying, panel, pureLyrics, previewPosition != null) {
@@ -261,7 +264,7 @@ fun TvFullPlayerScreen(onFinish: () -> Unit) {
                     onPreview = { previewPosition = it }, onExitDown = { controls.request() })
                 if (!playback.seekable) Text(stringResource(R.string.tv_no_seek), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (previewPosition != null) {
-                    Text("左右调整 · 确定跳转 · 返回取消", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.tv_seek_preview), style = MaterialTheme.typography.labelMedium)
                 }
                 CompositionLocalProvider(LocalTvFocusMemory provides controls) {
                     TvPlayerControlRow(isPlaying, error != null,
@@ -458,27 +461,62 @@ private fun TvSyncedLyricsPanel(lyrics: List<LyricLine>, activeIndex: Int, showT
     modifier: Modifier = Modifier, compact: Boolean = false) {
     val listState = rememberLazyListState()
     val motion = com.cutedino.xiangsuplayer.ui.theme.LocalTvMotionScale.current
-    LaunchedEffect(activeIndex, lyrics.size) {
-        if (activeIndex in lyrics.indices) {
-            val target = (activeIndex - if (compact) 0 else 1).coerceAtLeast(0)
-            if (motion == 0f) listState.scrollToItem(target) else listState.animateScrollToItem(target)
+    val baseStyle = MaterialTheme.typography.bodyLarge
+    val activeStyle = baseStyle.copy(fontSize = 32.sp, lineHeight = 44.sp, fontWeight = FontWeight.SemiBold)
+    val adjacentStyle = baseStyle.copy(fontSize = 24.sp, lineHeight = 34.sp)
+    val translationStyle = baseStyle.copy(fontSize = 18.sp, lineHeight = 28.sp)
+    val measurer = rememberTextMeasurer()
+    BoxWithConstraints(modifier.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
+        val density = LocalDensity.current
+        val topPadding = if (compact) 0.dp else 12.dp
+        val lineSpacing = if (compact) 12.dp else 20.dp
+        val (target, listHeight) = remember(lyrics, activeIndex, showTranslation, compact, constraints, density, baseStyle, measurer) {
+            val textWidth = Constraints(maxWidth = constraints.maxWidth)
+            val spacing = with(density) { lineSpacing.roundToPx() }
+            fun height(line: LyricLine, isActive: Boolean): Int {
+                val original = measurer.measure(line.text, if (isActive) activeStyle else adjacentStyle,
+                    constraints = textWidth).size.height
+                val translated = line.translation
+                return original + if (showTranslation && !translated.isNullOrBlank()) {
+                    measurer.measure(translated, translationStyle, constraints = textWidth).size.height
+                } else 0
+            }
+            val viewport = constraints.maxHeight
+            val active = lyrics.getOrNull(activeIndex)
+            when {
+                active == null -> 0 to viewport
+                compact -> {
+                    val currentHeight = height(active, isActive = true)
+                    val withNext = lyrics.getOrNull(activeIndex + 1)?.let { currentHeight + spacing + height(it, isActive = false) }
+                    activeIndex to (withNext?.takeIf { it <= viewport } ?: currentHeight.coerceAtMost(viewport))
+                }
+                else -> {
+                    val previous = lyrics.getOrNull(activeIndex - 1)
+                    val available = viewport - spacing - with(density) { topPadding.roundToPx() }
+                    val showPrevious = previous != null && height(active, isActive = true) + height(previous, isActive = false) <= available
+                    (if (showPrevious) activeIndex - 1 else activeIndex) to viewport
+                }
+            }
         }
-    }
-    Box(modifier.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
+        LaunchedEffect(target, activeIndex, lyrics, motion) {
+            if (target in lyrics.indices) {
+                if (motion == 0f) listState.scrollToItem(target) else listState.animateScrollToItem(target)
+            }
+        }
         if (lyrics.isEmpty()) Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.tv_player_no_lyrics), style = MaterialTheme.typography.headlineSmall)
             Text(stringResource(R.string.tv_player_no_lyrics_hint), color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall)
-        } else LazyColumn(state = listState, modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(top = if (compact) 0.dp else 40.dp, bottom = if (compact) 16.dp else 100.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        } else LazyColumn(state = listState, modifier = Modifier.align(Alignment.TopStart).fillMaxWidth()
+            .height(with(density) { listHeight.toDp() }),
+            contentPadding = PaddingValues(top = topPadding, bottom = maxHeight), verticalArrangement = Arrangement.spacedBy(lineSpacing)) {
             itemsIndexed(lyrics) { index, line ->
                 val active = index == activeIndex
                 Column(Modifier.fillMaxWidth()) {
                     Text(line.text, color = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = if (active) 32.sp else 24.sp, lineHeight = if (active) 44.sp else 34.sp,
-                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal)
+                        style = if (active) activeStyle else adjacentStyle)
                     if (showTranslation && !line.translation.isNullOrBlank()) Text(line.translation,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 18.sp, lineHeight = 28.sp)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, style = translationStyle)
                 }
             }
         }
@@ -537,19 +575,27 @@ private fun TvPlayQueueDrawer(queueList: List<PlaybackQueueEntry>, currentId: St
     val actionFocus = remember { FocusRequester() }
     var returnToAction by remember { mutableStateOf(false) }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = currentIndex.coerceAtLeast(0))
-    var targetIndex by remember { mutableStateOf(currentIndex.coerceAtLeast(0)) }
+    var targetId by remember { mutableStateOf(currentId ?: queueList.firstOrNull()?.id) }
+    var fallbackIndex by remember { mutableIntStateOf(currentIndex.coerceAtLeast(0)) }
     var requestFocus by remember { mutableStateOf(true) }
     var actionId by remember { mutableStateOf<String?>(null) }
     val activeAction = actionId
+    val targetIndex = queueList.indexOfFirst { it.id == targetId }.takeIf { it >= 0 }
+        ?: fallbackIndex.coerceIn(0, queueList.lastIndex.coerceAtLeast(0))
 
+    LaunchedEffect(activeAction, queueList) {
+        if (activeAction != null && queueList.none { it.id == activeAction }) {
+            actionId = null
+            returnToAction = false
+            requestFocus = true
+        }
+    }
     LaunchedEffect(requestFocus, queueList) {
         if (!requestFocus) return@LaunchedEffect
         if (queueList.isEmpty()) {
             closeFocus.requestFocus()
         } else {
-            val index = targetIndex.coerceIn(queueList.indices)
-            targetIndex = index
-            if (listState.layoutInfo.visibleItemsInfo.none { it.index == index }) listState.scrollToItem(index)
+            if (listState.layoutInfo.visibleItemsInfo.none { it.index == targetIndex }) listState.scrollToItem(targetIndex)
             withFrameNanos { }
             if (returnToAction) actionFocus.requestFocus() else rowFocus.requestFocus()
         }
@@ -584,7 +630,10 @@ private fun TvPlayQueueDrawer(queueList: List<PlaybackQueueEntry>, currentId: St
                                     .then(if (index == targetIndex) Modifier.focusRequester(rowFocus) else Modifier)
                             ) { PlayerController.playQueueEntry(entry.id) }
                             TvTextAction("更多", modifier = if (index == targetIndex) Modifier.focusRequester(actionFocus) else Modifier) {
-                                targetIndex = index; returnToAction = true; actionId = entry.id
+                                targetId = entry.id
+                                fallbackIndex = index
+                                returnToAction = true
+                                actionId = entry.id
                             }
                         }
                     }
@@ -596,7 +645,11 @@ private fun TvPlayQueueDrawer(queueList: List<PlaybackQueueEntry>, currentId: St
         val actionIndex = queueList.indexOfFirst { it.id == activeAction }
         val song = queueList.getOrNull(actionIndex)?.song
         val cancel = remember { FocusRequester() }
-        val dismiss = { actionId = null; targetIndex = actionIndex.coerceAtLeast(0); requestFocus = true }
+        val dismiss = {
+            actionId = null
+            fallbackIndex = actionIndex.coerceAtLeast(0)
+            requestFocus = true
+        }
         if (song != null) {
             TvDialogPanel(
                 song.title,
@@ -610,7 +663,6 @@ private fun TvPlayQueueDrawer(queueList: List<PlaybackQueueEntry>, currentId: St
                             dismiss()
                             returnToAction = false
                             PlayerController.moveQueueEntryNext(activeAction)
-                            targetIndex = (currentIndex + if (actionIndex < currentIndex) 0 else 1).coerceAtLeast(0)
                         }
                     }
                     TvTextAction("移除") {

@@ -13,15 +13,19 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import net.moriafly.ncm.NcmApi
 import net.moriafly.ncm.ncmList
 import net.moriafly.ncm.ncmLong
 import net.moriafly.ncm.ncmObj
 import net.moriafly.ncm.ncmString
 import okhttp3.MediaType.Companion.toMediaType
+import com.cutedino.xiangsuplayer.core.source.SourceFallback
+import com.cutedino.xiangsuplayer.core.source.SourceHttpException
 import com.cutedino.xiangsuplayer.core.source.SourceNetwork
 import kotlinx.coroutines.CancellationException
 import net.moriafly.ncm.readResponse
+import net.moriafly.ncm.readBounded
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -81,24 +85,15 @@ object BuiltInSourceSearchApi {
             if (trimmed.isEmpty()) return@runCatching emptyList()
 
             when (platformKey.lowercase()) {
-                "all" -> coroutineScope {
+                "all" -> {
                     val perLimit = (limit / 3).coerceAtLeast(10)
-                    val wyJob = async { runCatching { searchWy(trimmed, page, perLimit) } }
-                    val txJob = async { runCatching { searchTx(trimmed, page, perLimit) } }
-                    val kgJob = async { runCatching { searchKg(trimmed, page, perLimit) } }
-                    val kwJob = async { runCatching { searchKw(trimmed, page, perLimit) } }
-                    val results = awaitAll(wyJob, txJob, kgJob, kwJob)
-                    if (results.all { it.isFailure }) results.first().getOrThrow()
-                    val lists = results.map { it.getOrDefault(emptyList()) }
-                    // 交错合并各平台结果，使前排展示包含各平台音源
-                    val merged = mutableListOf<Song>()
-                    val maxLen = lists.maxOfOrNull { it.size } ?: 0
-                    for (i in 0 until maxLen) {
-                        for (list in lists) {
-                            if (i < list.size) merged.add(list[i])
-                        }
-                    }
-                    merged
+                    aggregateSearch(listOf(
+                        { searchWy(trimmed, page, perLimit) },
+                        { searchTx(trimmed, page, perLimit) },
+                        { searchKg(trimmed, page, perLimit) },
+                        { searchKw(trimmed, page, perLimit) },
+                        { searchMg(trimmed, page, perLimit) }
+                    ))
                 }
                 "wy" -> searchWy(trimmed, page, limit)
                 "tx" -> searchTx(trimmed, page, limit)
@@ -106,6 +101,32 @@ object BuiltInSourceSearchApi {
                 "kw" -> searchKw(trimmed, page, limit)
                 "mg" -> searchMg(trimmed, page, limit)
                 else -> searchWy(trimmed, page, limit)
+            }
+        }.onFailure { if (it is CancellationException) throw it }
+    }
+
+    internal suspend fun aggregateSearch(
+        providers: List<suspend () -> List<Song>>,
+        providerTimeoutMs: Long = 4_500L
+    ): List<Song> = coroutineScope {
+        val results = providers.map { search ->
+            async {
+                try {
+                    val songs = withTimeoutOrNull(providerTimeoutMs) { search() }
+                        ?: throw java.net.SocketTimeoutException("Search provider deadline")
+                    Result.success(songs)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    Result.failure(failure)
+                }
+            }
+        }.awaitAll()
+        if (results.all { it.isFailure }) results.first().getOrThrow()
+        val lists = results.map { it.getOrDefault(emptyList()) }
+        buildList {
+            for (index in 0 until (lists.maxOfOrNull { it.size } ?: 0)) {
+                for (songs in lists) songs.getOrNull(index)?.let(::add)
             }
         }
     }
@@ -331,7 +352,7 @@ object BuiltInSourceSearchApi {
                     coverUrl = cover,
                     durationMs = 0L,
                     source = "mg",
-                    songmid = mp3
+                    playbackHintUrl = mp3.takeIf { SourceNetwork.httpsUrl(it) != null }
                 )
             )
         }
@@ -340,14 +361,14 @@ object BuiltInSourceSearchApi {
 
     // ─── 跨平台音频直链解析 (用于非 wy 歌曲或 wy 灰歌跨平台匹配) ───────────────
 
-    suspend fun resolvePlatformStream(song: Song, quality: AudioQuality): Result<StreamResult> =
+    suspend fun resolvePlatformStream(song: Song, quality: AudioQuality, rejectedMiguUrl: String? = null): Result<StreamResult> =
         withContext(Dispatchers.IO) {
             runCatching {
                 when (song.source.lowercase()) {
                     "kw", "kuwo" -> resolveKwStream(song.id, quality)
                     "kg", "kugou" -> resolveKgStream(song.hash.ifBlank { song.id }, song.songmid)
                     "tx", "qq" -> resolveTxStream(song.songmid.ifBlank { song.id }, song, quality)
-                    "mg", "migu" -> resolveMgStream(song, quality)
+                    "mg", "migu" -> resolveMgStream(song, quality, rejectedMiguUrl)
                     else -> {
                         // 对于网易云灰歌或未命中歌曲，通过「歌名 + 歌手」自动在酷我/酷狗跨平台匹配完整版音源
                         resolveByCrossPlatformMatch(song, quality)
@@ -358,19 +379,20 @@ object BuiltInSourceSearchApi {
 
     suspend fun resolveByCrossPlatformMatch(song: Song, quality: AudioQuality): StreamResult {
         val query = "${song.title} ${song.artist.split("/").firstOrNull().orEmpty()}".trim()
+        val fallback = SourceFallback()
         // 1. 优先尝试酷我直链
-        val kwCandidates = runCatching { searchKw(query, 1, 5) }.getOrDefault(emptyList())
+        val kwCandidates = fallback.attempt { searchKw(query, 1, 5) }.orEmpty()
         for (candidate in kwCandidates.filter { matchesRecording(song, it) }) {
-            val stream = runCatching { resolveKwStream(candidate.id, quality) }.getOrNull()
+            val stream = fallback.attempt { resolveKwStream(candidate.id, quality) }
             if (stream != null) return stream
         }
         // 2. 备选酷狗直链
-        val kgCandidates = runCatching { searchKg(query, 1, 5) }.getOrDefault(emptyList())
+        val kgCandidates = fallback.attempt { searchKg(query, 1, 5) }.orEmpty()
         for (candidate in kgCandidates.filter { matchesRecording(song, it) }) {
-            val stream = runCatching { resolveKgStream(candidate.hash.ifBlank { candidate.id }, candidate.songmid) }.getOrNull()
+            val stream = fallback.attempt { resolveKgStream(candidate.hash.ifBlank { candidate.id }, candidate.stableSongMid) }
             if (stream != null) return stream
         }
-        throw IllegalStateException("跨平台音源未匹配到可用直链")
+        fallback.exhausted("跨平台音源未匹配到可用直链")
     }
 
     private suspend fun resolveKwStream(rid: String, quality: AudioQuality): StreamResult {
@@ -382,7 +404,8 @@ object BuiltInSourceSearchApi {
         // 酷我移动客户端直链解析接口
         val url1 = "http://antiserver.kuwo.cn/anti.s?type=convert_url3&br=$br&format=mp3&rid=MUSIC_$rid&response=url"
         val req1 = Request.Builder().url(url1).header("User-Agent", UA_DESKTOP).build()
-        val body1 = executeString(req1)
+        val fallback = SourceFallback()
+        val body1 = fallback.attempt { executeString(req1) }
         if (!body1.isNullOrBlank()) {
             if (body1.trim().startsWith("{")) {
                 val playUrl = JSONObject(body1).optString("url")
@@ -395,11 +418,11 @@ object BuiltInSourceSearchApi {
         }
         val url2 = "http://antiserver.kuwo.cn/anti.s?type=convert_url&rid=MUSIC_$rid&format=mp3|aac&response=url"
         val req2 = Request.Builder().url(url2).header("User-Agent", UA_DESKTOP).build()
-        val body2 = executeString(req2)?.trim()
+        val body2 = fallback.attempt { executeString(req2) }?.trim()
         if (!body2.isNullOrBlank() && body2.startsWith("http")) {
             return StreamResult.Full(url = body2, sourceName = "酷我音源")
         }
-        throw IllegalStateException("酷我直链解析为空")
+        fallback.exhausted("酷我直链解析为空")
     }
 
     private suspend fun resolveKgStream(hash: String, albumId: String): StreamResult {
@@ -439,7 +462,8 @@ object BuiltInSourceSearchApi {
             .header("Referer", "https://y.qq.com/")
             .post(payload.toString().toRequestBody("application/json".toMediaType()))
             .build()
-        val body = executeString(req)
+        val fallback = SourceFallback()
+        val body = fallback.attempt { executeString(req) }
         if (!body.isNullOrBlank()) {
             val data = JSONObject(body).optJSONObject("req_0")?.optJSONObject("data")
             val sip = data?.optJSONArray("sip")?.optString(0).orEmpty().ifBlank { "https://ws.stream.qqmusic.qq.com/" }
@@ -448,14 +472,16 @@ object BuiltInSourceSearchApi {
                 return StreamResult.Full(url = "$sip$purl", sourceName = "QQ音乐直链")
             }
         }
-        return resolveByCrossPlatformMatch(song, quality)
+        return fallback.attempt { resolveByCrossPlatformMatch(song, quality) }
+            ?: fallback.exhausted("QQ 音乐未返回可用直链")
     }
 
-    private suspend fun resolveMgStream(song: Song, quality: AudioQuality): StreamResult {
-        if (song.songmid.startsWith("http")) {
-            return StreamResult.Full(url = song.songmid, sourceName = "咪咕音源")
-        }
-        return resolveByCrossPlatformMatch(song, quality)
+    private suspend fun resolveMgStream(song: Song, quality: AudioQuality, rejectedUrl: String?): StreamResult {
+        val fallback = SourceFallback()
+        val media = fallback.attempt { refreshMiguUrl(song, rejectedUrl) { query -> searchMg(query, 1, 30) } }
+        if (media != null) return StreamResult.Full(url = media, sourceName = "咪咕音源")
+        return fallback.attempt { resolveByCrossPlatformMatch(song, quality) }
+            ?: fallback.exhausted("咪咕未返回可用直链")
     }
 
     // ─── 多平台双语歌词抓取与兜底 ──────────────────────────────────────────
@@ -602,17 +628,11 @@ object BuiltInSourceSearchApi {
             }
         }
 
-    private suspend fun executeString(request: Request): String? {
-        return try {
-            httpClient.newCall(request).readResponse { resp ->
-                if (resp.isSuccessful) resp.body?.string() else null
-            }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-            } catch (_: Exception) {
-            null
+    private suspend fun executeString(request: Request): String? =
+        httpClient.newCall(request).readResponse { response ->
+            if (!response.isSuccessful) throw SourceHttpException(response.code)
+            response.body?.readBounded(4 * 1024 * 1024)?.toString(Charsets.UTF_8)
         }
-    }
 
     private fun decodeHtmlEntities(input: String): String {
         return input
@@ -636,4 +656,15 @@ internal fun matchesRecording(song: Song, candidate: Song): Boolean {
         artist == normalized(candidate.artist.substringBefore('/')) &&
         song.durationMs > 0L && candidate.durationMs > 0L &&
         kotlin.math.abs(song.durationMs - candidate.durationMs) <= maxOf(3_000L, song.durationMs / 40)
+}
+
+internal suspend fun refreshMiguUrl(
+    song: Song, rejectedUrl: String? = null, search: suspend (String) -> List<Song>
+): String? {
+    song.playbackHintUrl?.takeIf { it != rejectedUrl && SourceNetwork.httpsUrl(it) != null }?.let { return it }
+    val query = "${song.title} ${song.artist.substringBefore('/')}".trim()
+    if (query.isBlank()) return null
+    return search(query).firstNotNullOfOrNull { match ->
+        match.playbackHintUrl?.takeIf { match.key == song.key && it != rejectedUrl && SourceNetwork.httpsUrl(it) != null }
+    }
 }

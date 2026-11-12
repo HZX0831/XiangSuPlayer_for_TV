@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "skills": {
+    "kotlin-kmp-code-review": {
+      "source": "mmiani/kotlin-kmp-claude-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/kotlin-kmp-code-review/SKILL.md",
+      "computedHash": "77b279a5a96a815051663fe852d92b17d54e1cc558f9bed0dae0c42e438ff9a1"
+    },
+    "systematic-debugging": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "skillPath": "skills/systematic-debugging/SKILL.md",
+      "computedHash": "79ff0583175346e39431b0dc713b223edd1bd7a7ea2b6c8b78b2fb9a3fed6782"
+    }
+  }
+}

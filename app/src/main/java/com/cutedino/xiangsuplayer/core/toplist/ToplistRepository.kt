@@ -5,12 +5,14 @@ import com.cutedino.xiangsuplayer.core.model.toSong
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.moriafly.ncm.NcmApi
-import net.moriafly.ncm.ncmList
 import net.moriafly.ncm.ncmObj
 import okhttp3.MediaType.Companion.toMediaType
 import com.cutedino.xiangsuplayer.core.source.SourceNetwork
+import com.cutedino.xiangsuplayer.core.source.SourceHttpException
 import kotlinx.coroutines.CancellationException
 import net.moriafly.ncm.readResponse
+import net.moriafly.ncm.readBounded
+import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -47,7 +49,7 @@ object ToplistRepository {
             }
         }
 
-        runCatching {
+        try {
             val songs = when (entry.platformKey.lowercase()) {
                 "wy" -> fetchWyBoard(entry.bangid)
                 "tx" -> fetchTxBoard(entry)
@@ -57,15 +59,19 @@ object ToplistRepository {
             if (songs.isNotEmpty()) {
                 boardSongsCache[entry.id] = songs
             }
-            songs
+            Result.success(songs)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Result.failure(failure)
         }
     }
 
     @Suppress("UNCHECKED_CAST")
     private suspend fun fetchWyBoard(bangid: String): List<Song> {
         val res = NcmApi.playlistDetail(bangid)
-        val playlistObj = res.getOrNull()?.ncmObj("playlist") ?: return emptyList()
-        val tracks = playlistObj.ncmList("tracks")
+        val playlistObj = res.getOrThrow().ncmObj("playlist")
+        val tracks = checkNotNull(playlistObj["tracks"] as? List<*>) { "网易云榜单缺少曲目列表" }
         return tracks.mapNotNull { (it as? Map<String, Any?>)?.toSong()?.copy(source = "wy") }
     }
 
@@ -99,11 +105,11 @@ object ToplistRepository {
             )
             .build()
 
-        val body = execute(req) ?: return emptyList()
+        val body = execute(req)
         val root = JSONObject(body)
         val songList = root.optJSONObject("toplist")
             ?.optJSONObject("data")
-            ?.optJSONArray("songInfoList") ?: return emptyList()
+            ?.optJSONArray("songInfoList") ?: error("QQ 音乐榜单缺少曲目列表")
 
         val result = ArrayList<Song>(songList.length())
         for (i in 0 until songList.length()) {
@@ -145,7 +151,7 @@ object ToplistRepository {
     private suspend fun fetchTxPeriod(bangid: String): String {
         return try {
             val req = Request.Builder().url(TX_PERIOD_URL).build()
-            val html = execute(req) ?: return ""
+            val html = execute(req)
             val pattern = Regex("""data-listname="(.+?)" data-tid=".*?\/(.+?)" data-date="(.+?)".*?<\/i>""")
             for (m in pattern.findAll(html)) {
                 if (m.groupValues[2] == bangid) {
@@ -153,6 +159,8 @@ object ToplistRepository {
                 }
             }
             ""
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             ""
         }
@@ -160,8 +168,8 @@ object ToplistRepository {
 
     private suspend fun fetchKgBoard(entry: ToplistCatalog.Entry): List<Song> {
         val req = Request.Builder().url(String.format(KG_LIST_URL, entry.bangid)).build()
-        val body = execute(req) ?: return emptyList()
-        val info = JSONObject(body).optJSONObject("data")?.optJSONArray("info") ?: return emptyList()
+        val body = execute(req)
+        val info = JSONObject(body).optJSONObject("data")?.optJSONArray("info") ?: error("酷狗榜单缺少曲目列表")
 
         val result = ArrayList<Song>(info.length())
         for (i in 0 until info.length()) {
@@ -198,15 +206,9 @@ object ToplistRepository {
         return result
     }
 
-    private suspend fun execute(request: Request): String? {
-        return try {
-            httpClient.newCall(request).readResponse { resp ->
-                if (resp.isSuccessful) resp.body?.string() else null
-            }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-            } catch (_: Exception) {
-            null
+    internal suspend fun execute(request: Request, transport: Call.Factory = httpClient): String =
+        transport.newCall(request).readResponse { response ->
+            if (!response.isSuccessful) throw SourceHttpException(response.code)
+            checkNotNull(response.body) { "榜单响应为空" }.readBounded(4 * 1024 * 1024).toString(Charsets.UTF_8)
         }
-    }
 }

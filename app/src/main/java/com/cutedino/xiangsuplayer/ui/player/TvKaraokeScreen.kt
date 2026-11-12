@@ -50,6 +50,7 @@ import com.cutedino.xiangsuplayer.core.phone.PhoneChoice
 import com.cutedino.xiangsuplayer.core.source.builtin.BuiltInSourceSearchApi
 import com.cutedino.xiangsuplayer.ui.components.TvPhoneInputDialog
 import com.cutedino.xiangsuplayer.ui.components.TvTextAction
+import com.cutedino.xiangsuplayer.ui.components.TvStatusText
 import com.cutedino.xiangsuplayer.ui.theme.tryRequestFocus
 import com.cutedino.xiangsuplayer.ui.theme.PixelPlayTvTheme
 
@@ -131,8 +132,9 @@ internal fun TvKaraokeScreen(onClose: () -> Unit) {
                 }
                 item { TvTextAction(stringResource(R.string.tv_karaoke_exit), onClick = onClose) }
             }
-            playback.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            playback.error?.let { TvStatusText(it, error = true) }
             LazyColumn(Modifier.weight(0.45f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (playback.queue.isEmpty()) item { TvStatusText(stringResource(R.string.tv_karaoke_queue_empty)) }
                 items(playback.queue, key = { it.id }) { entry ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         val prefix = if (entry.id == playback.currentEntryId) "当前 · " else ""
@@ -156,7 +158,7 @@ internal fun TvKaraokeScreen(onClose: () -> Unit) {
         onClose = { pair = false },
         search = { query ->
             BuiltInSourceSearchApi.searchSongs("all", query, page = 1, limit = 18)
-                .getOrDefault(emptyList()).distinctBy { it.key }.map { PhoneChoice("${it.title} · ${it.artist}", it) }
+                .getOrThrow().distinctBy { it.key }.map { PhoneChoice("${it.title} · ${it.artist}", it) }
         },
         order = { PlayerController.enqueueKaraoke(it.song) }
     )

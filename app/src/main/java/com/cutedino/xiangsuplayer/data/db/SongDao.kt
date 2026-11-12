@@ -30,24 +30,46 @@ interface SongDao {
     suspend fun isFavorite(sourceId: String, songId: String): Boolean
 
     @Transaction
-    suspend fun toggleFavorite(song: SongEntity): Boolean {
-        if (isFavorite(song.sourceId, song.id)) {
-            deleteFavoriteById(song.sourceId, song.id)
-            return false
+    suspend fun toggleFavorite(song: SongEntity, accountId: Long? = null): Boolean {
+        val liked = !isFavorite(song.sourceId, song.id)
+        if (liked) insertFavorite(song) else deleteFavoriteById(song.sourceId, song.id)
+        val trackId = song.id.toLongOrNull()
+        if (accountId != null && song.sourceId == "wy" && trackId != null && trackId > 0L) {
+            upsertFavoriteSync(FavoriteSyncEntry(accountId, trackId, liked))
         }
-        insertFavorite(song)
-        return true
+        return liked
     }
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertFavoriteSync(entry: FavoriteSyncEntry)
+
+    @Query("SELECT * FROM favorite_sync WHERE accountId = :accountId AND retryAtMs <= :now ORDER BY retryAtMs, trackId LIMIT 1")
+    suspend fun nextFavoriteSync(accountId: Long, now: Long): FavoriteSyncEntry?
+
+    @Query("DELETE FROM favorite_sync WHERE accountId = :accountId AND trackId = :trackId AND token = :token")
+    suspend fun finishFavoriteSync(accountId: Long, trackId: Long, token: String)
+
+    @Query("UPDATE favorite_sync SET attempts = :attempts, retryAtMs = :retryAt WHERE accountId = :accountId AND trackId = :trackId AND token = :token")
+    suspend fun deferFavoriteSync(accountId: Long, trackId: Long, token: String, attempts: Int, retryAt: Long)
+
     // ── 播放历史持久化 ──
-    @Query("SELECT * FROM play_history ORDER BY playedAtMs DESC LIMIT 200")
+    @Query("SELECT * FROM play_history ORDER BY playedAtMs DESC, rowid DESC LIMIT 200")
     fun getPlayHistoryFlow(): Flow<List<PlayHistoryEntity>>
 
-    @Query("SELECT * FROM play_history ORDER BY playedAtMs DESC LIMIT 200")
+    @Query("SELECT * FROM play_history ORDER BY playedAtMs DESC, rowid DESC LIMIT 200")
     suspend fun getPlayHistoryList(): List<PlayHistoryEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertHistory(item: PlayHistoryEntity)
+    suspend fun upsertHistory(item: PlayHistoryEntity)
+
+    @Query("DELETE FROM play_history WHERE rowid NOT IN (SELECT rowid FROM play_history ORDER BY playedAtMs DESC, rowid DESC LIMIT 200)")
+    suspend fun trimHistory()
+
+    @Transaction
+    suspend fun insertHistory(item: PlayHistoryEntity) {
+        upsertHistory(item)
+        trimHistory()
+    }
 
     @Query("DELETE FROM play_history WHERE sourceId = :sourceId AND id = :songId")
     suspend fun deleteHistoryById(sourceId: String, songId: String)

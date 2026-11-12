@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.os.Build
 import com.google.gson.Gson
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -54,7 +55,27 @@ internal class PhoneInputServer(
     private val clients = Collections.newSetFromMap(ConcurrentHashMap<Socket, Boolean>())
     private val clientSlots = Semaphore(4)
     private val searchLock = kotlinx.coroutines.sync.Mutex()
-    @Volatile private var choices = emptyMap<String, PhoneChoice>()
+    private data class SearchChoice(val choice: PhoneChoice, val expiresAt: Long)
+
+    private val choices = LinkedHashMap<String, SearchChoice>()
+
+    private fun findChoice(id: String): PhoneChoice? = synchronized(choices) {
+        choices[id]?.takeIf { System.nanoTime() - it.expiresAt < 0L }?.choice
+    }
+
+    private fun rememberChoices(results: List<PhoneChoice>): Map<String, PhoneChoice> = synchronized(choices) {
+        val now = System.nanoTime()
+        choices.values.removeAll { now - it.expiresAt >= 0L }
+        val batch = results.take(18).associateBy { UUID.randomUUID().toString() }
+        val deadline = now + TimeUnit.MINUTES.toNanos(2)
+        batch.forEach { (id, choice) -> choices[id] = SearchChoice(choice, deadline) }
+        val oldest = choices.keys.iterator()
+        while (choices.size > 360) {
+            oldest.next()
+            oldest.remove()
+        }
+        batch
+    }
 
     init {
         scope.launch {
@@ -174,7 +195,7 @@ internal class PhoneInputServer(
 
         when {
             key == "choice" && order != null -> {
-                val choice = choices[value]
+                val choice = findChoice(value)
                 val accepted = choice?.let { withTimeoutOrNull(6000L) { order.invoke(it) } }
                 when (accepted) {
                     true -> respond(socket, "200 OK", "ordered")
@@ -189,12 +210,17 @@ internal class PhoneInputServer(
                     return
                 }
                 try {
-                    choices = emptyMap()
-                    val results = withTimeoutOrNull(6000L) { search.invoke(value) }
+                    val results = try {
+                        withTimeoutOrNull(6000L) { search.invoke(value) }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        respond(socket, "503 Service Unavailable", "search_failed")
+                        return
+                    }
                     if (results == null) respond(socket, "503 Service Unavailable", "search_timeout")
                     else {
-                        choices = results.take(18).associateBy { UUID.randomUUID().toString() }
-                        val entries = choices.map { (id, choice) -> mapOf("id" to id, "label" to choice.label.take(240)) }
+                        val entries = rememberChoices(results).map { (id, choice) -> mapOf("id" to id, "label" to choice.label.take(240)) }
                         respond(socket, "200 OK", "results", mapOf("choices" to entries))
                     }
                 } finally {

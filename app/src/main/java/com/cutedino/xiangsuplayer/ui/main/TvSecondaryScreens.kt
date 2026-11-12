@@ -30,6 +30,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import com.cutedino.xiangsuplayer.ui.components.TvDialogPanel
 import com.cutedino.xiangsuplayer.ui.components.TvTextAction
+import com.cutedino.xiangsuplayer.ui.components.TvStatusText
+import com.cutedino.xiangsuplayer.ui.components.TvArtwork
 import android.graphics.Bitmap
 import android.widget.Toast
 import androidx.compose.foundation.Image
@@ -103,6 +105,7 @@ import com.cutedino.xiangsuplayer.core.source.market.SourceMarketRepository
 import com.cutedino.xiangsuplayer.core.source.market.SourceAlreadyInstalledException
 import com.cutedino.xiangsuplayer.core.source.market.LxScriptSourceAdapter
 import com.cutedino.xiangsuplayer.data.auth.MultiPlatformAccountManager
+import com.cutedino.xiangsuplayer.data.auth.QqQrException
 import com.cutedino.xiangsuplayer.data.session.SessionManager
 import com.cutedino.xiangsuplayer.ui.theme.PixelPlayGold
 import com.cutedino.xiangsuplayer.ui.theme.PixelPlayGreen
@@ -152,16 +155,17 @@ fun TvLibraryScreen(
     val favoriteSongs by PlayerController.favoriteSongs.collectAsState()
     var selectedSubTab by rememberSaveable { mutableStateOf(LibrarySubTab.FAVORITES) }
 
-    var wyPlaylists by remember { mutableStateOf<List<Playlist>>(emptyList()) }
+    val ncmAccount by NcmApi.accountState.collectAsState()
+    var wyPlaylists by remember(ncmAccount) { mutableStateOf<List<Playlist>>(emptyList()) }
     var txPlaylists by remember { mutableStateOf<List<Playlist>>(emptyList()) }
     var kgPlaylists by remember { mutableStateOf<List<Playlist>>(emptyList()) }
-    var cloudSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var cloudSongs by remember(ncmAccount) { mutableStateOf<List<Song>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
 
     var libraryError by remember { mutableStateOf(false) }
     var libraryRetry by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(selectedSubTab, accountRevision, libraryRetry) {
+    LaunchedEffect(selectedSubTab, accountRevision, ncmAccount, libraryRetry) {
         wyPlaylists = emptyList()
         txPlaylists = emptyList()
         kgPlaylists = emptyList()
@@ -172,9 +176,10 @@ fun TvLibraryScreen(
             when (selectedSubTab) {
                 LibrarySubTab.FAVORITES, LibrarySubTab.LOCAL_DIRECTORIES, LibrarySubTab.WEBDAV -> {}
                 LibrarySubTab.WY_PLAYLISTS -> {
-                    if (NcmApi.isLogin && NcmApi.userId > 0) {
+                    if (ncmAccount.isReady) {
                         @Suppress("UNCHECKED_CAST")
-                        val rawList = NcmApi.userPlaylist(NcmApi.userId.toString(), limit = 40).getOrThrow().ncmList("playlist")
+                        val rawList = NcmApi.userPlaylist(ncmAccount.userId.toString(), limit = 40).getOrThrow().ncmList("playlist")
+                        ensureActive()
                         wyPlaylists = rawList.mapNotNull { item ->
                             val map = item as? Map<String, Any?> ?: return@mapNotNull null
                             Playlist(
@@ -194,9 +199,10 @@ fun TvLibraryScreen(
                     kgPlaylists = MultiPlatformAccountManager.fetchKugouUserPlaylists()
                 }
                 LibrarySubTab.WY_CLOUD -> {
-                    if (NcmApi.isLogin) {
+                    if (ncmAccount.isReady) {
                         @Suppress("UNCHECKED_CAST")
                         val rawData = NcmApi.full.userCloud(limit = 100).getOrThrow().ncmList("data")
+                        ensureActive()
                         cloudSongs = rawData.mapNotNull { item ->
                             val map = item as? Map<String, Any?> ?: return@mapNotNull null
                             val simpleSong = map.ncmObj("simpleSong")
@@ -251,12 +257,11 @@ fun TvLibraryScreen(
 
         Box(modifier = Modifier.weight(1f)) {
             if (isLoading) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                }
+                TvStatusText(stringResource(R.string.tv_loading))
             } else if (libraryError) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    TvTextAction("曲库加载失败，重试") { libraryRetry++ }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TvStatusText(stringResource(R.string.tv_load_failed), error = true)
+                    TvTextAction(stringResource(R.string.tv_retry)) { libraryRetry++ }
                 }
             } else {
                 when (selectedSubTab) {
@@ -328,7 +333,7 @@ fun TvLibraryScreen(
                     LibrarySubTab.WY_PLAYLISTS -> {
                         PlaylistGridSection(
                             playlists = wyPlaylists,
-                            emptyHint = if (NcmApi.isLogin) "暂无网易云歌单" else "请先点击右上角登录网易云账号同步歌单",
+                            emptyHint = if (ncmAccount.isReady) "暂无网易云歌单" else "请先点击右上角登录网易云账号同步歌单",
                             onOpenPlaylist = onOpenPlaylist
                         )
                     }
@@ -353,7 +358,7 @@ fun TvLibraryScreen(
                         if (cloudSongs.isEmpty()) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text(
-                                    text = if (NcmApi.isLogin) "你的网易云音乐云盘暂无曲目" else "请先登录网易云账号以访问音乐云盘",
+                                    text = if (ncmAccount.isReady) "你的网易云音乐云盘暂无曲目" else "请先登录网易云账号以访问音乐云盘",
                                     color = PixelPlayLightPurple
                                 )
                             }
@@ -412,16 +417,7 @@ private fun PlaylistGridSection(
                         )
                         .padding(10.dp)
                 ) {
-                    AsyncImage(
-                        model = pl.coverUrl,
-                        contentDescription = pl.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(PixelPlaySurfaceVariant)
-                    )
+                    TvArtwork(pl.coverUrl, Modifier.fillMaxWidth().aspectRatio(1f))
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = pl.name,
@@ -528,10 +524,13 @@ fun TvSourceMarketScreen(modifier: Modifier = Modifier,
                     TvTextInput(address, { address = it }, stringResource(R.string.tv_source_url), Modifier.weight(1f))
                     TvTextAction(stringResource(R.string.tv_import), enabled = address.isNotBlank(), busy = operation) { importSource(address) }
                 }
-                TvTextAction(stringResource(R.string.tv_retry), Modifier.focusRequester(entryFocus), busy = loading) { revision++ }
-                if (failed) Text(stringResource(if (releases.isEmpty()) R.string.tv_load_failed else R.string.tv_refresh_failed), color = MaterialTheme.colorScheme.error)
-                if (loading && releases.isEmpty()) CircularProgressIndicator()
-                else if (releases.isEmpty() && !failed) Text(stringResource(R.string.tv_market_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TvTextAction(stringResource(if (failed) R.string.tv_retry else R.string.tv_refresh),
+                    Modifier.focusRequester(entryFocus), busy = loading) { revision++ }
+                when {
+                    loading -> TvStatusText(stringResource(R.string.tv_loading))
+                    failed -> TvStatusText(stringResource(if (releases.isEmpty()) R.string.tv_load_failed else R.string.tv_refresh_failed), error = true)
+                    releases.isEmpty() -> TvStatusText(stringResource(R.string.tv_market_empty))
+                }
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
                     items(releases, key = { it.id }) { release ->
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -795,32 +794,17 @@ fun TvSettingsScreen(
     ) {
         item {
             SettingsCard(
-                title = "默认流媒体输出音质",
-                subtitle = "优先请求指定无损/Hi-Res档位，未命中时自动向下兼容"
+                title = stringResource(R.string.tv_quality_request_title),
+                subtitle = stringResource(R.string.tv_quality_request_summary)
             ) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AudioQuality.entries.forEach { q ->
-                        val isSelected = currentQuality == q
-                        var focused by remember { mutableStateOf(false) }
-                        Box(
-                            modifier = Modifier
-                                .tvPillFocusable(
-                                    isSelected = isSelected,
-                                    onFocusChanged = { focused = it },
-                                    onClick = {
-                                        currentQuality = q
-                                        SessionManager.saveAudioQuality(context, q)
-                                        PlayerController.setQuality(q)
-                                    }
-                                )
-                                .padding(horizontal = 18.dp, vertical = 9.dp)
-                        ) {
-                            Text(
-                                text = q.displayName,
-                                color = if (focused) PixelPlayPurpleDark else Color.White,
-                                fontSize = 16.sp,
-                                fontWeight = if (isSelected || focused) FontWeight.Bold else FontWeight.Medium
-                            )
+                    AudioQuality.entries.forEach { quality ->
+                        key(quality) {
+                            TvTextAction(quality.displayName, selected = currentQuality == quality) {
+                                currentQuality = quality
+                                SessionManager.saveAudioQuality(context, quality)
+                                PlayerController.setQuality(quality)
+                            }
                         }
                     }
                 }
@@ -1013,6 +997,10 @@ fun TvMultiAccountDialog(
 
     var selectedPlatformTab by remember { mutableIntStateOf(0) } // 0:网易云, 1:QQ音乐, 2:酷狗
 
+    val ncmAccount by NcmApi.accountState.collectAsState()
+    val wyProfileLoading = stringResource(R.string.tv_ncm_profile_loading)
+    val wyProfileFailed = stringResource(R.string.tv_ncm_profile_failed)
+
     // 网易云扫码状态
     var wyQrBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var wyQrStatus by remember { mutableStateOf("点击下方按钮生成网易云二维码") }
@@ -1026,6 +1014,27 @@ fun TvMultiAccountDialog(
     // 酷狗绑定状态
     var wyQrJob by remember { mutableStateOf<Job?>(null) }
     var qqQrJob by remember { mutableStateOf<Job?>(null) }
+
+    suspend fun finishWyLogin() {
+        wyQrBitmap = null
+        wyQrStatus = wyProfileLoading
+        val profile = kotlinx.coroutines.withTimeoutOrNull(10_000L) { NcmApi.fetchAndSaveAccountInfo() }
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+        if (profile?.isSuccess == true) {
+            Toast.makeText(context, "网易云音乐登录成功！", Toast.LENGTH_SHORT).show()
+            onAccountChanged()
+        } else {
+            wyQrStatus = wyProfileFailed
+        }
+    }
+
+    fun retryWyProfile() {
+        val previous = wyQrJob
+        wyQrJob = scope.launch {
+            previous?.cancelAndJoin()
+            finishWyLogin()
+        }
+    }
 
     // 自动启动网易云二维码与轮询
     fun startWyQrLogin() {
@@ -1047,16 +1056,13 @@ fun TvMultiAccountDialog(
                 wyQrStatus = when (code) {
                     801 -> "等待手机扫码..."
                     802 -> "已扫码，请在手机上点击确认授权"
-                    803 -> "登录成功！"
+                    803 -> wyProfileLoading
                     800 -> { wyQrBitmap = null; "二维码已过期，请点击刷新" }
                     else -> "状态码: $code"
                 }
             }
             ensureActive()
-            if (awaitRes.isSuccess && NcmApi.isLogin && NcmApi.fetchAndSaveAccountInfo().isSuccess) {
-                Toast.makeText(context, "网易云音乐登录成功！", Toast.LENGTH_SHORT).show()
-                onAccountChanged()
-            }
+            if (awaitRes.isSuccess) finishWyLogin()
         }
     }
 
@@ -1071,7 +1077,8 @@ fun TvMultiAccountDialog(
             val prep = MultiPlatformAccountManager.prepareQqQr()
             val session = prep.getOrNull()
             if (session == null) {
-                qqQrStatus = "二维码生成受限，推荐直接使用下方 QQ 号一键绑定"
+                qqQrStatus = (prep.exceptionOrNull() as? QqQrException)?.message
+                    ?: "二维码生成受限，推荐直接使用下方 QQ 号一键绑定"
                 return@launch
             }
             qqQrBitmap = session.qrBitmap
@@ -1088,7 +1095,7 @@ fun TvMultiAccountDialog(
                     Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                     onAccountChanged()
                     break
-                } else if (code == 65) {
+                } else if (code == 65 || code < 0) {
                     qqQrBitmap = null
                     break
                 }
@@ -1100,7 +1107,11 @@ fun TvMultiAccountDialog(
         if (selectedPlatformTab == 0) {
             qqQrJob?.cancelAndJoin()
             qqQrBitmap = null
-            if (!NcmApi.isLogin) startWyQrLogin()
+            when {
+                ncmAccount.isReady -> Unit
+                ncmAccount.hasCredential -> retryWyProfile()
+                else -> startWyQrLogin()
+            }
         } else {
             wyQrJob?.cancelAndJoin()
             wyQrBitmap = null
@@ -1134,7 +1145,7 @@ fun TvMultiAccountDialog(
             when (selectedPlatformTab) {
                 // 0. 网易云音乐
                 0 -> {
-                    if (NcmApi.isLogin) {
+                    if (ncmAccount.isReady) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1144,14 +1155,14 @@ fun TvMultiAccountDialog(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
-                                text = "已登录：${NcmApi.nickname.ifBlank { "网易云黑胶用户" }}",
+                                text = "已登录：${ncmAccount.nickname.ifBlank { "网易云黑胶用户" }}",
                                 color = PixelPlayGreen,
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "UID: ${NcmApi.userId} · 已开启私人FM、心动模式、红心与云盘同步",
+                                text = "UID: ${ncmAccount.userId} · 已开启私人FM、心动模式、红心与云盘同步",
                                 color = PixelPlayLightPurple,
                                 fontSize = 16.sp
                             )
@@ -1163,9 +1174,8 @@ fun TvMultiAccountDialog(
                                         onFocusChanged = { logoutFocused = it },
                                         onClick = {
                                             scope.launch {
-                                                wyQrJob?.cancelAndJoin()
+                                                wyQrJob?.cancel()
                                                 NcmApi.logout()
-                                                onAccountChanged()
                                             }
                                         }
                                     )
@@ -1214,28 +1224,12 @@ fun TvMultiAccountDialog(
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = wyQrStatus,
-                                    color = PixelPlayGold,
-                                    fontSize = 16.sp
-                                )
+                                TvStatusText(wyQrStatus)
                                 Spacer(modifier = Modifier.height(14.dp))
-                                var refFocused by remember { mutableStateOf(false) }
-                                Box(
-                                    modifier = Modifier
-                                        .tvPillFocusable(
-                                            onFocusChanged = { refFocused = it },
-                                            onClick = { startWyQrLogin() }
-                                        )
-                                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                                ) {
-                                    Text(
-                                        text = "刷新二维码",
-                                        color = if (refFocused) PixelPlayPurpleDark else Color.White,
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                if (ncmAccount.hasCredential) {
+                                    TvTextAction(stringResource(R.string.tv_ncm_profile_retry), onClick = ::retryWyProfile)
                                 }
+                                TvTextAction(stringResource(R.string.tv_qr_refresh), onClick = ::startWyQrLogin)
                             }
                         }
                     }
@@ -1286,28 +1280,10 @@ fun TvMultiAccountDialog(
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = qqQrStatus,
-                                    color = PixelPlayGold,
-                                    fontSize = 16.sp
-                                )
+                                TvStatusText(qqQrStatus)
                                 Spacer(modifier = Modifier.height(10.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    var refF by remember { mutableStateOf(false) }
-                                    Box(
-                                        modifier = Modifier
-                                            .tvPillFocusable(
-                                                onFocusChanged = { refF = it },
-                                                onClick = { startQqQrLogin() }
-                                            )
-                                            .padding(horizontal = 14.dp, vertical = 6.dp)
-                                    ) {
-                                        Text(
-                                            text = "刷新二维码",
-                                            color = if (refF) PixelPlayPurpleDark else Color.White,
-                                            fontSize = 16.sp
-                                        )
-                                    }
+                                    TvTextAction(stringResource(R.string.tv_qr_refresh), onClick = ::startQqQrLogin)
                                     if (MultiPlatformAccountManager.isQqLoggedIn) {
                                         var outF by remember { mutableStateOf(false) }
                                         Box(
@@ -1352,6 +1328,8 @@ fun TvMultiAccountDialog(
                                         onClick = {
                                             if (qqInputUin.isNotBlank()) {
                                                 MultiPlatformAccountManager.bindQqByUin(qqInputUin)
+                                                qqQrJob?.cancel()
+                                                qqQrBitmap = null
                                                 Toast.makeText(context, "已绑定 QQ 公开资料： $qqInputUin", Toast.LENGTH_SHORT).show()
                                                 onAccountChanged()
                                             }

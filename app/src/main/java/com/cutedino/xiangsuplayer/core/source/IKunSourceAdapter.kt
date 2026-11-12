@@ -9,17 +9,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import net.moriafly.ncm.readResponse
+import net.moriafly.ncm.readBounded
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
 class IKunSourceAdapter(
-    private val okHttpClient: OkHttpClient = SourceNetwork.configure(OkHttpClient.Builder())
+    okHttpClient: OkHttpClient = SourceNetwork.configure(OkHttpClient.Builder())
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(8, TimeUnit.SECONDS)
         .build()
 ) : ISoundSourceAdapter {
+
+    private val okHttpClient = okHttpClient.newBuilder().followRedirects(false).build()
 
     override val sourceId: String = "ikun"
     override val sourceName: String = "ikun 音源"
@@ -52,10 +55,10 @@ class IKunSourceAdapter(
 
             okHttpClient.newCall(request).readResponse { response ->
                 if (!response.isSuccessful) {
-                    throw IllegalStateException("ikun API 请求失败 HTTP ${response.code}")
+                    throw SourceHttpException(response.code)
                 }
 
-                val bodyString = response.body?.string() ?: throw IllegalStateException("响应体为空")
+                val bodyString = response.body?.readBounded(256 * 1024)?.toString(Charsets.UTF_8) ?: throw IllegalStateException("响应体为空")
                 val json = JsonParser.parseString(bodyString).asJsonObject
 
                 val code = json.get("code")?.asInt ?: -1

@@ -59,7 +59,13 @@ class TvSharedComponentTest {
     @Test fun windowSpecUsesLogicalSizeAndFontScale() {
         assertFalse(tvWindowSpec(960, 540, 1f).compact)
         assertTrue(tvWindowSpec(640, 360, 1f).compact)
-        assertTrue(tvWindowSpec(960, 540, 1.3f).compact)
+        val largeText = tvWindowSpec(960, 540, 1.3f)
+        assertTrue(largeText.compact)
+        assertEquals(48.dp, largeText.horizontalPadding)
+        assertEquals(27.dp, largeText.verticalPadding)
+        val compact = tvWindowSpec(640, 360, 1.3f)
+        assertEquals(32.dp, compact.horizontalPadding)
+        assertEquals(18.dp, compact.verticalPadding)
     }
     @Test fun systemMotionScaleUpdatesWithoutRecreatingTheScreen() {
         val resolver = InstrumentationRegistry.getInstrumentation().targetContext.contentResolver

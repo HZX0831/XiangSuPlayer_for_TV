@@ -5,10 +5,15 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import android.os.Looper
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.cutedino.xiangsuplayer.core.audio.PlaybackService
 import com.cutedino.xiangsuplayer.data.db.AppDatabase
+import com.cutedino.xiangsuplayer.ui.main.MainActivity
+import com.cutedino.xiangsuplayer.ui.player.PlayerActivity
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -48,6 +53,32 @@ class BackendRuntimeTest {
             }
         } finally {
             context.unbindService(connection)
+        }
+    }
+
+    @Test fun mediaSessionActivityReturnsToPlayer() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val main = instrumentation.startActivitySync(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+        val monitor = instrumentation.addMonitor(PlayerActivity::class.java.name, null, false)
+        val session = SessionToken(context, ComponentName(context, PlaybackService::class.java))
+        val controllerFuture = MediaController.Builder(context, session)
+            .setApplicationLooper(Looper.getMainLooper())
+            .buildAsync()
+        try {
+            val controller = controllerFuture.get(10, TimeUnit.SECONDS)
+            instrumentation.runOnMainSync { checkNotNull(controller.sessionActivity).send() }
+            val player = instrumentation.waitForMonitorWithTimeout(monitor, 10_000)
+            assertTrue("Media session did not open PlayerActivity", player is PlayerActivity)
+            instrumentation.runOnMainSync { player.finish() }
+        } finally {
+            instrumentation.removeMonitor(monitor)
+            instrumentation.runOnMainSync {
+                MediaController.releaseFuture(controllerFuture)
+                main.finish()
+            }
         }
     }
 }

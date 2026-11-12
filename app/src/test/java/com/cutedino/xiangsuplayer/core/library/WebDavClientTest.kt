@@ -61,18 +61,12 @@ class WebDavClientTest {
         assertEquals("Track 0", listing.items.first().name)
     }
 
-    @Test fun pagesShareSnapshotUntilExpiryOrInvalidation() = runBlocking {
-        var clock = 0L
-        val cache = FolderListingCache<List<Int>>({ clock }, ttlNanos = 10)
-        var reads = 0
-        suspend fun page() = cache.get("folder", "dir") { reads++; listOf(1, 2, 3) }
-        assertEquals(page(), page())
-        assertEquals(1, reads)
-        clock = 10L
-        page()
-        assertEquals(2, reads)
-        cache.invalidate("folder")
-        page()
-        assertEquals(3, reads)
+    @Test fun pagesShareSnapshotEvenWhenDirectoryChanges() = runBlocking {
+        val original = (1..25).toList()
+        val updated = listOf(0) + original
+        val session = FolderListingCache<List<Int>>()
+        assertEquals(24, session.get { original }.take(24).last())
+        assertEquals(25, session.get { updated }.drop(24).first())
+        assertEquals(0, FolderListingCache<List<Int>>().get { updated }.first())
     }
 }

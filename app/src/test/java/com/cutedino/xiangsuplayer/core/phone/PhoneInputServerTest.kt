@@ -1,5 +1,7 @@
 package com.cutedino.xiangsuplayer.core.phone
 
+import com.cutedino.xiangsuplayer.core.model.Song
+import com.google.gson.JsonParser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -103,6 +105,40 @@ class PhoneInputServerTest {
         }
     }
 
+    @Test fun searchesRetainIndependentChoicesAndDistinguishServiceFailureFromEmpty() {
+        val address = InetAddress.getByName("127.0.0.1") as Inet4Address
+        val ordered = mutableListOf<String>()
+        PhoneInputServer(address, onInput = {}, search = { query ->
+            when (query) {
+                "failure" -> throw java.io.IOException("upstream unavailable")
+                "empty" -> emptyList()
+                else -> listOf(PhoneChoice(query, Song(query, query, "Artist", "")))
+            }
+        }, order = {
+            synchronized(ordered) { ordered.add(it.song.id) }
+            true
+        }).use { server ->
+            val url = URI(server.url)
+            fun choice(query: String): String {
+                val reply = post(url, "query=$query")
+                assertTrue(reply.startsWith("HTTP/1.1 200"))
+                return JsonParser.parseString(reply.substringAfter("\r\n\r\n")).asJsonObject
+                    .getAsJsonArray("choices")[0].asJsonObject["id"].asString
+            }
+            val a = choice("phoneA")
+            val b = choice("phoneB")
+            val failure = post(url, "query=failure")
+            assertTrue(failure.startsWith("HTTP/1.1 503"))
+            assertTrue(failure.contains("search_failed"))
+            val empty = post(url, "query=empty")
+            assertTrue(empty.startsWith("HTTP/1.1 200"))
+            assertTrue(empty.contains("\"choices\":[]"))
+            assertTrue(post(url, "choice=$a").startsWith("HTTP/1.1 200"))
+            assertTrue(post(url, "choice=$b").startsWith("HTTP/1.1 200"))
+            assertEquals(listOf("phoneA", "phoneB"), synchronized(ordered) { ordered.toList() })
+        }
+    }
+
     private fun post(url: URI, data: String, origin: String = "http://${url.authority}"): String =
         Socket(url.host, url.port).use { socket ->
             socket.soTimeout = 4500
@@ -111,6 +147,6 @@ class PhoneInputServerTest {
                     "Content-Type: application/x-www-form-urlencoded\r\nContent-Length: ${data.length}\r\n\r\n$data")
                     .toByteArray(Charsets.US_ASCII)
             )
-            socket.getInputStream().bufferedReader().readLine()
+            socket.getInputStream().bufferedReader().readText()
         }
 }

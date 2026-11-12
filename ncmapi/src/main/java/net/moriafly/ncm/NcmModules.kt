@@ -21,7 +21,7 @@ internal object NcmModules {
             NcmRequest.weapi(
                 path = "/api/search/defaultkeyword",
                 params = params,
-            ).getOrThrow().body
+            ).getOrThrow().checkedBody()
         }
     }
 
@@ -41,7 +41,7 @@ internal object NcmModules {
             NcmRequest.weapi(
                 path = "/api/search/get",
                 params = params,
-            ).getOrThrow().body
+            ).getOrThrow().checkedBody()
         }
     }
 
@@ -61,7 +61,7 @@ internal object NcmModules {
             NcmRequest.weapi(
                 path = "/api/song/enhance/player/url/v1",
                 params = params,
-            ).getOrThrow().body
+            ).getOrThrow().checkedBody()
         }
     }
 
@@ -76,7 +76,7 @@ internal object NcmModules {
                     "ids" to "[$id]",
                     "br" to br.toString(),
                 ),
-            ).getOrThrow().body
+            ).getOrThrow().checkedBody()
         }
     }
 
@@ -88,7 +88,7 @@ internal object NcmModules {
                 params = linkedMapOf(
                     "c" to c,
                 ),
-            ).getOrThrow().body
+            ).getOrThrow().checkedBody()
         }
     }
 
@@ -103,7 +103,7 @@ internal object NcmModules {
                     "rv" to "-1",
                     "kv" to "-1",
                 ),
-            ).getOrThrow().body
+            ).getOrThrow().checkedBody()
         }
     }
 
@@ -119,7 +119,7 @@ internal object NcmModules {
             NcmRequest.weapi(
                 path = "/api/sms/captcha/sent",
                 params = params,
-            ).getOrThrow().body
+            ).getOrThrow().checkedBody()
         }
     }
 
@@ -136,7 +136,7 @@ internal object NcmModules {
                     "cellphone" to phone,
                     "captcha" to captcha,
                 ),
-            ).getOrThrow().body
+            ).getOrThrow().checkedBody()
         }
     }
 
@@ -159,24 +159,17 @@ internal object NcmModules {
                 password != null -> params["password"] = passwordMd5(password)
                 else -> error("loginCellphone: captcha and password required")
             }
-            val r = NcmRequest.weapi(
-                path = "/api/w/login/cellphone",
-                params = params,
-            ).getOrThrow()
-
-            val bodyCookie = (r.body["cookie"] as? String)?.takeIf { it.isNotBlank() }
-            if (bodyCookie != null) {
-                val sess = NcmSession.INSTANCE
-                if (sess != null) {
-                    val map = bodyCookie.split(';')
-                        .map { it.trim() }
-                        .filter { '=' in it }
-                        .associate { val (k, v) = it.split('=', limit = 2); k to v }
-                    sess.merge(map)
-                }
-            }
-            r.body
+            login("/api/w/login/cellphone", params).getOrThrow()
         }
+    }
+
+    internal suspend fun login(path: String, params: Map<String, Any?>): Result<Map<String, Any?>> = runCatching {
+        val session = NcmSession.requireInstance()
+        val state = session.beginLogin()
+        val body = NcmRequest.weapiForSession(path, params, expected = state).getOrThrow().checkedBody()
+        session.merge(state, body.ncmString("cookie").split(';').map(String::trim))
+        session.refresh(state)
+        body
     }
 
     suspend fun loginRefresh(): Result<Map<String, Any?>> = withContext(Dispatchers.IO) {
@@ -184,51 +177,59 @@ internal object NcmModules {
             NcmRequest.weapi(
                 path = "/api/w/login/status",
                 params = emptyMap(),
-            ).getOrThrow().body
+            ).getOrThrow().checkedBody()
         }
     }
 
-    suspend fun logout(): Result<Map<String, Any?>> = withContext(Dispatchers.IO) {
-        runCatching {
-            NcmSession.INSTANCE?.logout()
-            NcmRequest.weapi(
-                path = "/api/logout",
-                params = emptyMap(),
-            ).getOrThrow().body
-        }
+    suspend fun logout(): Result<Map<String, Any?>> {
+        val session = NcmSession.INSTANCE
+            ?: return Result.failure(IllegalStateException("NetEase session unavailable"))
+        val previous = session.logout()
+        return NcmRequest.weapiForSession("/api/logout", emptyMap(), expected = previous, logout = true)
+            .mapCatching { it.checkedBody() }
     }
 
     data class QrKeyResult(val key: String, val code: Int)
 
+    @Volatile
+    private var qrAttempt: Pair<String, NcmSessionSnapshot>? = null
+
     suspend fun qrLoginKey(): Result<QrKeyResult> = withContext(Dispatchers.IO) {
         runCatching {
+            val session = NcmSession.requireInstance()
+            val state = session.beginLogin()
             val r1 = runCatching {
-                NcmRequest.weapi(
+                NcmRequest.weapiForSession(
                     path = "/api/login/qrcode/unikey",
-                    params = linkedMapOf("type" to 1),
+                    params = linkedMapOf("type" to 1), expected = state,
                 ).getOrThrow()
             }.getOrNull()
 
-            val k1 = ((r1?.body?.get("data") as? Map<*, *>) ?: r1?.body)?.get("unikey") as? String
-                ?: (r1?.body?.get("unikey") as? String)
+            val valid = r1?.takeIf { it.isSuccess }
+            val k1 = ((valid?.body?.get("data") as? Map<*, *>) ?: valid?.body)?.get("unikey") as? String
+                ?: (valid?.body?.get("unikey") as? String)
             if (!k1.isNullOrBlank()) {
-                return@runCatching QrKeyResult(k1, r1?.code ?: 200)
+                session.refresh(state)
+                qrAttempt = k1 to state
+                return@runCatching QrKeyResult(k1, 200)
             }
 
             val unikey = UUID.randomUUID().toString().replace("-", "")
-            val r2 = NcmRequest.weapi(
-                path = "/api/w/login/qr/unikey",
+            val r2 = NcmRequest.weapiForSession(
+                path = "/api/w/login/qr/unikey", expected = state,
                 params = linkedMapOf(
                     "type" to 1,
                     "unikey" to unikey,
                 ),
             ).getOrThrow()
 
-            val body2 = r2.body
+            val body2 = r2.checkedBody()
             val data2 = (body2["data"] as? Map<*, *>) ?: body2
             val k2 = (data2["unikey"] as? String)
                 ?: (body2["unikey"] as? String)
                 ?: error("Failed to fetch unikey")
+            session.refresh(state)
+            qrAttempt = k2 to state
             QrKeyResult(k2, r2.code)
         }
     }
@@ -240,7 +241,7 @@ internal object NcmModules {
                 NcmRequest.weapi(
                     path = "/api/w/login/qr/create",
                     params = linkedMapOf("key" to key, "url" to url, "qrimg" to true),
-                ).getOrThrow().body
+                ).getOrThrow().checkedBody()
             }.getOrNull()
 
             val d = resp?.get("data") as? Map<*, *> ?: resp
@@ -270,33 +271,19 @@ internal object NcmModules {
 
     suspend fun qrLoginCheck(key: String): Result<Map<String, Any?>> = withContext(Dispatchers.IO) {
         runCatching {
-            val r = runCatching {
-                NcmRequest.weapi(
-                    path = "/api/login/qrcode/client/login",
-                    params = linkedMapOf("type" to 1, "key" to key),
-                ).getOrThrow()
-            }.getOrElse {
-                NcmRequest.weapi(
-                    path = "/api/w/login/qr/check",
-                    params = linkedMapOf("type" to 1, "key" to key),
-                ).getOrThrow()
+            val session = NcmSession.requireInstance()
+            val state = checkNotNull(qrAttempt?.takeIf { it.first == key }?.second) { "Unknown QR login attempt" }
+            session.refresh(state)
+            val params = linkedMapOf("type" to 1, "key" to key)
+            val first = NcmRequest.weapiForSession("/api/login/qrcode/client/login", params, expected = state)
+                .getOrNull()?.takeIf { it.code in 800..803 }
+            val response = first ?: NcmRequest.weapiForSession("/api/w/login/qr/check", params, expected = state).getOrThrow()
+            val body = response.checkedBody(800, 801, 802, 803)
+            if (response.code == 803) {
+                session.merge(state, body.ncmString("cookie").split(';').map(String::trim))
+                check(session.refresh(state).loggedIn) { "QR login returned no session credential" }
             }
-
-            val code = r.body.ncmInt("code", -1)
-            if (code == 803) {
-                val cookie = r.body.ncmString("cookie")
-                if (cookie.isNotBlank()) {
-                    val sess = NcmSession.INSTANCE
-                    if (sess != null) {
-                        val map = cookie.split(';')
-                            .map { it.trim() }
-                            .filter { '=' in it }
-                            .associate { val (k, v) = it.split('=', limit = 2); k to v }
-                        sess.merge(map)
-                    }
-                }
-            }
-            r.body
+            body
         }
     }
 
@@ -330,7 +317,7 @@ internal object NcmModules {
                     "clientType" to "pc",
                     "time" to System.currentTimeMillis().toString(),
                 ),
-            ).getOrThrow().body
+            ).getOrThrow().checkedBody()
         }
     }
 
@@ -351,7 +338,7 @@ internal object NcmModules {
                             "s" to s.toString(),
                             "k" to k.toString(),
                         ),
-                    ).getOrThrow().body
+                    ).getOrThrow().checkedBody()
                 }
                 val d2 = async {
                     val ids = d1.await()["playlist"]?.let { p ->
@@ -377,7 +364,7 @@ internal object NcmModules {
             NcmRequest.weapi(
                 path = "/api/v3/discovery/recommend/songs",
                 params = emptyMap(),
-            ).getOrThrow().body
+            ).getOrThrow().checkedBody()
         }
     }
 
@@ -386,7 +373,7 @@ internal object NcmModules {
             NcmRequest.weapi(
                 path = "/api/v1/discovery/recommend/resource",
                 params = emptyMap(),
-            ).getOrThrow().body
+            ).getOrThrow().checkedBody()
         }
     }
 
@@ -395,26 +382,23 @@ internal object NcmModules {
             NcmRequest.weapi(
                 path = "/api/personalized/playlist",
                 params = mapOf("limit" to limit, "total" to true, "n" to 1000),
-            ).getOrThrow().body
+            ).getOrThrow().checkedBody()
         }
     }
 
-    suspend fun userAccount(): Result<Map<String, Any?>> = withContext(Dispatchers.IO) {
+    internal suspend fun userAccount(expected: NcmSessionSnapshot? = null): Result<Map<String, Any?>> = withContext(Dispatchers.IO) {
         runCatching {
             val res1 = runCatching {
-                NcmRequest.weapi(
-                    path = "/api/nuser/account/get",
-                    params = emptyMap(),
-                ).getOrThrow()
+                if (expected == null) NcmRequest.weapi("/api/nuser/account/get", emptyMap()).getOrThrow()
+                else NcmRequest.weapiForSession("/api/nuser/account/get", emptyMap(), expected = expected).getOrThrow()
             }.getOrNull()
 
-            if (res1 != null && res1.body.ncmInt("code") == 200) {
-                res1.body
+            if (res1?.isSuccess == true) {
+                res1.checkedBody()
             } else {
-                NcmRequest.weapi(
-                    path = "/api/w/nuser/account/get",
-                    params = emptyMap(),
-                ).getOrThrow().body
+                val response = if (expected == null) NcmRequest.weapi("/api/w/nuser/account/get", emptyMap())
+                else NcmRequest.weapiForSession("/api/w/nuser/account/get", emptyMap(), expected = expected)
+                response.getOrThrow().checkedBody()
             }
         }
     }
@@ -428,7 +412,7 @@ internal object NcmModules {
                     "limit" to limit.toString(),
                     "offset" to offset.toString(),
                 ),
-            ).getOrThrow().body
+            ).getOrThrow().checkedBody()
         }
     }
 

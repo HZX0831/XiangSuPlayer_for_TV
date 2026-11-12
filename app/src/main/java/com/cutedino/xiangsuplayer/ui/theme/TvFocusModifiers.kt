@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -66,7 +67,7 @@ fun Modifier.tvFocusableCard(
     }
     val border by animateColorAsState(if (focused) focusedBorderColor ?: scheme.primary else unfocusedBorderColor,
         tween(duration), label = "contentFocusOutline")
-    val fill by animateColorAsState(if (pressed && enabled && !busy) scheme.primaryContainer else if (focused) focusedBackgroundColor ?: scheme.surfaceVariant
+    val fill by animateColorAsState(if (pressed && enabled && !busy) lerp(scheme.surfaceVariant, scheme.primary, 0.12f) else if (focused) focusedBackgroundColor ?: scheme.surfaceVariant
         else unfocusedBackgroundColor ?: Color.Transparent, tween(duration), label = "contentFocusTone")
     val base = this.tvFocusTarget(focusKey).bringIntoViewRequester(visible).heightIn(min = 48.dp).clip(shape)
         .background(fill, shape).border(borderWidth, border, shape)
@@ -103,20 +104,18 @@ fun Modifier.tvPillFocusable(
     val visible = remember { BringIntoViewRequester() }
     val processing = stringResource(R.string.tv_processing)
     val scheme = MaterialTheme.colorScheme
-    val duration = (140 * LocalTvMotionScale.current).toInt()
     LaunchedEffect(focused) {
         onFocusChanged?.invoke(focused)
         if (focused) visible.bringIntoView()
     }
-    val fill by animateColorAsState(when {
-        pressed && enabled && !busy -> scheme.primary.copy(alpha = 0.75f)
+    val fill = when {
+        focused && pressed && enabled && !busy -> lerp(scheme.primary, Color.White, 0.20f)
         focused -> scheme.primary
+        pressed && enabled && !busy -> lerp(scheme.surfaceVariant, scheme.primary, 0.12f)
         isSelected == true || isPrimary -> scheme.surfaceVariant
         else -> Color.Transparent
-    },
-        tween(duration), label = "actionFocusTone")
-    val outline by animateColorAsState(if (focused) scheme.primary else Color.Transparent,
-        tween(duration), label = "actionFocusOutline")
+    }
+    val outline = if (focused) scheme.onPrimary else Color.Transparent
     return this.tvFocusTarget(focusKey).bringIntoViewRequester(visible).heightIn(min = 48.dp).clip(shape).background(fill, shape)
         .border(2.dp, outline, shape).drawWithContent {
             drawContent()

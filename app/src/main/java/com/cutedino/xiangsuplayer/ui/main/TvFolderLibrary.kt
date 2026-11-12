@@ -49,6 +49,7 @@ import com.cutedino.xiangsuplayer.core.library.FolderLibrary
 import com.cutedino.xiangsuplayer.core.library.FolderPage
 import com.cutedino.xiangsuplayer.core.library.LibraryFolder
 import com.cutedino.xiangsuplayer.ui.components.TvTextAction
+import com.cutedino.xiangsuplayer.ui.components.TvStatusText
 import com.cutedino.xiangsuplayer.ui.theme.tryRequestFocus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -78,6 +79,7 @@ internal fun TvFolderLibrary(network: Boolean) {
         folder = it
         path = emptyList()
         page = 0
+        retry++
         focusEntry = true
     }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -99,12 +101,15 @@ internal fun TvFolderLibrary(network: Boolean) {
     }
     BackHandler(folder != null) { up() }
 
-    LaunchedEffect(folder, path, page, retry) {
+    val browse = remember(folder, path, retry) {
+        folder?.let { FolderLibrary.Browse(it, path.lastOrNull()?.id) }
+    }
+    LaunchedEffect(browse, page) {
         listing = null
-        val selected = folder ?: return@LaunchedEffect
+        val session = browse ?: return@LaunchedEffect
         error = null
         try {
-            listing = FolderLibrary.page(context, selected, path.lastOrNull()?.id, page)
+            listing = session.page(context, page)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -130,7 +135,7 @@ internal fun TvFolderLibrary(network: Boolean) {
                     error = "此设备没有可用的系统目录选择器"
                 }
             }
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            error?.let { TvStatusText(it, error = true) }
             if (folders.isEmpty() && error == null) Text(if (network) "尚未添加网络目录" else "请选择内置存储或 U 盘中的音乐目录")
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(folders, key = { it.id }) { item ->
@@ -149,15 +154,15 @@ internal fun TvFolderLibrary(network: Boolean) {
             }
             val result = listing
             if (result?.incomplete == true) {
-                Text(stringResource(R.string.tv_directory_incomplete), color = MaterialTheme.colorScheme.tertiary)
-                TvTextAction("重试") { retry++; focusEntry = true }
+                TvStatusText(stringResource(R.string.tv_directory_incomplete))
+                TvTextAction("重试") { page = 0; retry++; focusEntry = true }
             }
             when {
                 error != null -> {
-                    Text(error.orEmpty(), color = MaterialTheme.colorScheme.error)
-                    TvTextAction("重试") { retry++; focusEntry = true }
+                    TvStatusText(error.orEmpty(), error = true)
+                    TvTextAction("重试") { page = 0; retry++; focusEntry = true }
                 }
-                result == null -> Text("正在读取目录…")
+                result == null -> TvStatusText(stringResource(R.string.tv_directory_loading))
                 result.entries.isEmpty() -> Text("此目录没有 MP3、FLAC 或 M4A")
                 else -> {
                     val songs = remember(result) { result.entries.mapNotNull { it.song } }

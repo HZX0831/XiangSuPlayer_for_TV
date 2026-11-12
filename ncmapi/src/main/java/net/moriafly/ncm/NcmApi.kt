@@ -5,6 +5,8 @@ package net.moriafly.ncm
 import android.app.Application
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 
 /**
@@ -38,9 +40,29 @@ object NcmApi {
         }
     }
 
-    val isLogin: Boolean get() = NcmSession.INSTANCE?.isLogin == true
+    private val signedOut = MutableStateFlow(NcmAccountState(false))
+    val accountState: StateFlow<NcmAccountState> get() = NcmSession.INSTANCE?.accountState ?: signedOut
+    val isLogin: Boolean get() = accountState.value.isReady
     val userId: Long get() = NcmSession.INSTANCE?.userId ?: 0L
     val nickname: String get() = NcmSession.INSTANCE?.nickname ?: ""
+
+    data class AccountIdentity(val userId: Long, internal val generation: Long)
+
+    fun currentAccount(): AccountIdentity? {
+        val session = NcmSession.INSTANCE ?: return null
+        return session.accountIdentity()?.let { (id, generation) -> AccountIdentity(id, generation) }
+    }
+
+    suspend fun setAccountLike(account: AccountIdentity, trackId: Long, liked: Boolean): Result<Unit> {
+        val session = NcmSession.INSTANCE ?: return Result.failure(IllegalStateException("NetEase session unavailable"))
+        val expected = session.forAccount(account.userId, account.generation)
+            ?: return Result.failure(IllegalStateException("NetEase account changed"))
+        return NcmRequest.weapiForSession(
+            "/api/radio/like",
+            mapOf("alg" to "itembased", "trackId" to trackId, "like" to liked, "time" to "3"),
+            expected = expected
+        ).mapCatching { it.confirmedBody(); Unit }
+    }
 
     fun setOs(os: String) { NcmSession.INSTANCE?.os = os }
     fun setRealIp(ip: String?) { NcmSession.INSTANCE?.realIp = ip }
@@ -49,7 +71,10 @@ object NcmApi {
     suspend fun fetchAndSaveAccountInfo(): Result<Pair<Long, String>> = withContext(Dispatchers.IO) {
         runCatching {
             ensureInstalled()
-            val res = userAccount().getOrThrow()
+            val session = NcmSession.requireInstance()
+            val expected = session.snapshot()
+            check(expected.loggedIn) { "NetEase credential unavailable" }
+            val res = NcmModules.userAccount(expected).getOrThrow()
             val profile = res.ncmObj("profile")
             val account = res.ncmObj("account")
 
@@ -62,8 +87,8 @@ object NcmApi {
             if (nick.isBlank()) nick = account.ncmString("userName")
             if (nick.isBlank()) nick = "网易云用户"
 
-            if (uid > 0L) NcmSession.INSTANCE?.userId = uid
-            if (nick.isNotBlank()) NcmSession.INSTANCE?.nickname = nick
+            check(uid > 0L && session.refresh(expected).loggedIn) { "NetEase account identity unavailable" }
+            session.saveProfile(expected, uid, nick)
 
             uid to nick
         }
@@ -147,10 +172,7 @@ object NcmApi {
         NcmModules.loginRefresh()
     }
 
-    suspend fun logout() = runSafely("logout") {
-        ensureInstalled()
-        NcmModules.logout()
-    }
+    suspend fun logout(): Result<Map<String, Any?>> = NcmModules.logout()
 
     data class QrLoginResult(
         val key: String,
@@ -213,8 +235,10 @@ object NcmApi {
     ): Result<T> = withContext(Dispatchers.IO) {
         try {
             block()
-        } catch (t: Throwable) {
-            Result.failure(t as? Exception ?: Exception(t.message ?: "unknown", t))
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Result.failure(failure)
         }
     }
 

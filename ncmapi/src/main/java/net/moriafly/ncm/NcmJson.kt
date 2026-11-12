@@ -9,7 +9,7 @@ object NcmJson {
 
     fun toJsonString(value: Any?): String = buildString { writeValue(value) }
 
-    fun parseAny(text: String): Any? = Parser(text).parseValue()
+    fun parseAny(text: String): Any? = Parser(text).parseDocument()
 
     fun parseObject(text: String): Map<String, Any?> {
         val v = parseAny(text)
@@ -82,13 +82,26 @@ object NcmJson {
 
     private class Parser(private val src: String) {
         private var i: Int = 0
+        private var depth = 0
+
+        fun parseDocument(): Any? {
+            val result = parseValue()
+            skipWs()
+            check(i == src.length) { "Unexpected trailing JSON" }
+            return result
+        }
+
+        private inline fun <T> nested(block: () -> T): T {
+            check(++depth <= 128) { "JSON nesting limit exceeded" }
+            return try { block() } finally { depth-- }
+        }
 
         fun parseValue(): Any? {
             skipWs()
             if (i >= src.length) return null
             return when (val c = src[i]) {
-                '{' -> parseObject()
-                '[' -> parseArray()
+                '{' -> nested { parseObject() }
+                '[' -> nested { parseArray() }
                 '"' -> parseString()
                 't' -> parseTrue()
                 'f' -> parseFalse()
@@ -200,7 +213,7 @@ object NcmJson {
         private fun skipWs() {
             while (i < src.length && src[i].isWhitespace()) i++
         }
-        private fun error(msg: String): Nothing = error("$msg at $i")
+        private fun error(msg: String): Nothing = kotlin.error("$msg at $i")
     }
 }
 

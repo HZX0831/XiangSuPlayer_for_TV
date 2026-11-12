@@ -29,9 +29,12 @@ data class Song(
     val source: String = "wy",
     val songmid: String = "",
     val hash: String = "",
-    val isFavorite: Boolean = false
+    val isFavorite: Boolean = false,
+    val playbackHintUrl: String? = null
 ) {
     val key: SongKey get() = SongKey(SongKey.canonicalSource(source), id)
+    val stableSongMid: String get() = songmid.takeUnless { "://" in it || it.startsWith("//") }.orEmpty()
+    val stableProviderId: String get() = stableSongMid.ifBlank { id }
 }
 
 @Suppress("UNCHECKED_CAST")

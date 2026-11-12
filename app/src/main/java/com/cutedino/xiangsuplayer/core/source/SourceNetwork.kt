@@ -4,7 +4,6 @@ import com.cutedino.xiangsuplayer.data.session.SessionManager
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
-import java.io.IOException
 
 internal object SourceNetwork {
     private val legacyHosts = setOf(
@@ -26,7 +25,7 @@ internal object SourceNetwork {
         .addInterceptor { chain ->
             val request = chain.request()
             if (!request.url.isHttps && (!allowLegacy || !legacyAllowed(request.url))) {
-                throw IOException("未启用此旧版 HTTP 音源")
+                throw SourcePolicyException("未启用此旧版 HTTP 音源")
             }
             chain.proceed(request)
         }
@@ -35,7 +34,7 @@ internal object SourceNetwork {
             if (request.url.isHttps) {
                 chain.proceed(request)
             } else {
-                if (!allowLegacy || !legacyAllowed(request.url)) throw IOException("不受信任的 HTTP 音源")
+                if (!allowLegacy || !legacyAllowed(request.url)) throw SourcePolicyException("不受信任的 HTTP 音源")
                 chain.proceed(request.newBuilder().removeHeader("Cookie").removeHeader("Authorization").build())
             }
         }

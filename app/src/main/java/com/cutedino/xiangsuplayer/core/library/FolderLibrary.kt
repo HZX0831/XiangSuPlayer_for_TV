@@ -25,7 +25,6 @@ private data class DirectoryListing(val items: List<DirectoryItem>, val incomple
 
 internal object FolderLibrary {
     const val PAGE_SIZE = 24
-    private val listings = FolderListingCache<DirectoryListing>()
     private val changes = Mutex()
     private val supported = setOf("mp3", "flac", "m4a")
     private const val LOCAL = "local:"
@@ -49,7 +48,7 @@ internal object FolderLibrary {
         changes.withLock {
             folders(context).firstOrNull { !it.network && it.location == tree.toString() }?.let { existing ->
                 context.contentResolver.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                listings.invalidate(existing.id)
+
                 return@withLock existing
             }
             val doc = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
@@ -85,7 +84,7 @@ internal object FolderLibrary {
                     FolderCredentials.saveAuthorization(context, folder.id, previous)
                     throw failure
                 }
-                listings.invalidate(folder.id)
+
                 folder
             }
         }
@@ -94,7 +93,7 @@ internal object FolderLibrary {
         withContext(Dispatchers.IO) {
             changes.withLock {
                 check(prefs(context).edit().remove(folder.id).commit()) { "无法移除目录" }
-                listings.invalidate(folder.id)
+
                 if (folder.network) FolderCredentials.remove(context, folder.id)
                 else runCatching {
                     context.contentResolver.releasePersistableUriPermission(
@@ -111,29 +110,41 @@ internal object FolderLibrary {
         check(prefs(context).edit().putString(folder.id, "$type\n$name\n${folder.location}").commit()) { "无法保存目录" }
     }
 
-    suspend fun page(context: Context, folder: LibraryFolder, directory: String?, page: Int): FolderPage =
-        withContext(Dispatchers.IO) {
-            require(page in 0..Int.MAX_VALUE / PAGE_SIZE)
-            val offset = page * PAGE_SIZE
-            val result = listings.get(folder.id, directory) {
-                val raw = if (folder.network) davListing(context, folder, directory) else localListing(context, folder, directory)
-                raw.copy(items = raw.items.distinctBy { it.id }.sortedWith(
-                    compareBy<DirectoryItem> { !it.directory }.thenBy { it.name.lowercase(Locale.ROOT) }.thenBy { it.id }
-                ))
-            }
-            val entries = result.items.drop(offset).take(PAGE_SIZE).map { item ->
-                ensureActive()
-                if (item.directory) return@map FolderEntry(item.id, item.name)
-                val source = (if (folder.network) DAV else LOCAL) + folder.id
-                val fallback = Song(item.id, item.name.substringBeforeLast('.'), "", "", source = source)
-                val song = if (folder.network) fallback else {
-                    val document = DocumentsContract.buildDocumentUriUsingTree(Uri.parse(folder.location), item.id)
-                    tags(context, document, fallback)
-                }
-                FolderEntry(item.id, item.name, song)
-            }
-            FolderPage(entries, offset.toLong() + PAGE_SIZE < result.items.size, result.incomplete)
+    class Browse(private val folder: LibraryFolder, private val directory: String?) {
+        private val listing = FolderListingCache<DirectoryListing>()
+
+        suspend fun page(context: Context, page: Int): FolderPage =
+            FolderLibrary.page(context, folder, directory, page, listing)
+    }
+
+    private suspend fun page(
+        context: Context,
+        folder: LibraryFolder,
+        directory: String?,
+        page: Int,
+        listing: FolderListingCache<DirectoryListing>
+    ): FolderPage = withContext(Dispatchers.IO) {
+        require(page in 0..Int.MAX_VALUE / PAGE_SIZE)
+        val offset = page * PAGE_SIZE
+        val result = listing.get {
+            val raw = if (folder.network) davListing(context, folder, directory) else localListing(context, folder, directory)
+            raw.copy(items = raw.items.distinctBy { it.id }.sortedWith(
+                compareBy<DirectoryItem> { !it.directory }.thenBy { it.name.lowercase(Locale.ROOT) }.thenBy { it.id }
+            ))
         }
+        val entries = result.items.drop(offset).take(PAGE_SIZE).map { item ->
+            ensureActive()
+            if (item.directory) return@map FolderEntry(item.id, item.name)
+            val source = (if (folder.network) DAV else LOCAL) + folder.id
+            val fallback = Song(item.id, item.name.substringBeforeLast('.'), "", "", source = source)
+            val song = if (folder.network) fallback else {
+                val document = DocumentsContract.buildDocumentUriUsingTree(Uri.parse(folder.location), item.id)
+                tags(context, document, fallback)
+            }
+            FolderEntry(item.id, item.name, song)
+        }
+        FolderPage(entries, offset.toLong() + PAGE_SIZE < result.items.size, result.incomplete)
+    }
 
     private suspend fun davListing(context: Context, folder: LibraryFolder, directory: String?): DirectoryListing {
         val root = requireNotNull(WebDavClient.root(folder.location))

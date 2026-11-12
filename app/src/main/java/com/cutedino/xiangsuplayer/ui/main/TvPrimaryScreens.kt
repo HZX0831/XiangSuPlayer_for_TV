@@ -43,6 +43,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import com.cutedino.xiangsuplayer.ui.components.TvPhoneInputDialog
 import com.cutedino.xiangsuplayer.ui.components.TvTextAction
+import com.cutedino.xiangsuplayer.ui.components.TvStatusText
 import com.cutedino.xiangsuplayer.ui.components.TvArtwork
 import kotlinx.coroutines.ensureActive
 import android.widget.Toast
@@ -78,12 +79,12 @@ import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -97,14 +98,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 import com.cutedino.xiangsuplayer.core.audio.PlayerController
 import com.cutedino.xiangsuplayer.core.model.Playlist
 import com.cutedino.xiangsuplayer.core.model.Song
@@ -119,6 +119,7 @@ import com.cutedino.xiangsuplayer.ui.theme.PixelPlayPurpleDark
 import com.cutedino.xiangsuplayer.ui.theme.PixelPlaySurfaceVariant
 import com.cutedino.xiangsuplayer.ui.theme.tvFocusableCard
 import com.cutedino.xiangsuplayer.ui.theme.tvPillFocusable
+import com.cutedino.xiangsuplayer.ui.theme.rememberTvWindowSpec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -142,13 +143,15 @@ fun TvExploreScreen(
     val currentSong by PlayerController.currentSong.observeAsState()
     val scope = rememberCoroutineScope()
 
-    var playlists by remember { mutableStateOf<List<Playlist>>(emptyList()) }
-    var dailySongs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    val ncmAccount by NcmApi.accountState.collectAsState()
+    var playlists by remember(ncmAccount) { mutableStateOf<List<Playlist>>(emptyList()) }
+    var dailySongs by remember(ncmAccount) { mutableStateOf<List<Song>>(emptyList()) }
     var areaSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
     var selectedAreaType by remember { mutableIntStateOf(7) } // 7:华语, 96:欧美, 8:日本, 16:韩国
     var isLoading by remember { mutableStateOf(true) }
     var exploreFailed by remember { mutableStateOf(false) }
     var areaFailed by remember { mutableStateOf(false) }
+    var areaLoading by remember { mutableStateOf(true) }
     var areaRevision by remember { mutableIntStateOf(0) }
     var areaFor by remember { mutableIntStateOf(-1) }
     var exploreJob by remember { mutableStateOf<Job?>(null) }
@@ -160,7 +163,7 @@ fun TvExploreScreen(
             exploreFailed = false
             try { withContext(Dispatchers.IO) {
                 @Suppress("UNCHECKED_CAST")
-                if (NcmApi.isLogin) {
+                if (ncmAccount.isReady) {
                     val recPl = NcmApi.recommendPlaylists().valueOrReport { exploreFailed = true }?.ncmList("recommend").orEmpty()
                     val parsedPl = recPl.mapNotNull { item ->
                         val map = item as? Map<String, Any?> ?: return@mapNotNull null
@@ -210,11 +213,12 @@ fun TvExploreScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(ncmAccount) {
         loadExploreData()
     }
 
     LaunchedEffect(selectedAreaType, areaRevision) {
+        areaLoading = true
         areaFailed = false
         if (areaFor != selectedAreaType) areaSongs = emptyList()
         areaFor = selectedAreaType
@@ -225,6 +229,7 @@ fun TvExploreScreen(
             val parsed = payload.ncmList("data").take(18).mapNotNull { (it as? Map<String, Any?>)?.toSong()?.copy(source = "wy") }
             areaSongs = parsed
         }.onFailure { if (it is CancellationException) throw it; areaFailed = true }
+        areaLoading = false
     }
 
     LazyColumn(
@@ -234,17 +239,28 @@ fun TvExploreScreen(
         contentPadding = PaddingValues(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(22.dp)
     ) {
-        item("load-state") {
-            if (exploreFailed) TvTextAction(stringResource(R.string.tv_load_failed)) { loadExploreData() }
+        if (isLoading || exploreFailed) {
+            item("load-state") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TvStatusText(
+                        stringResource(if (isLoading) R.string.tv_loading else if (dailySongs.isEmpty() && playlists.isEmpty())
+                            R.string.tv_load_failed else R.string.tv_refresh_failed),
+                        error = exploreFailed && !isLoading
+                    )
+                    if (exploreFailed && !isLoading) TvTextAction(stringResource(R.string.tv_retry)) { loadExploreData() }
+                }
+            }
         }
         item("daily-feature") {
             ExploreHeroCard(
-                title = if (NcmApi.isLogin) "每日专属推荐" else "热门新歌精选",
-                subtitle = if (dailySongs.isEmpty()) "暂无曲目 · 确定键重试" else "共 ${dailySongs.size} 首曲目",
+                title = if (ncmAccount.isReady) "每日专属推荐" else "热门新歌精选",
+                subtitle = if (dailySongs.isEmpty()) stringResource(if (isLoading) R.string.tv_loading else R.string.tv_empty_result) else "共 ${dailySongs.size} 首曲目",
                 icon = Icons.Rounded.MusicNote,
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
-                    if (dailySongs.isEmpty()) loadExploreData() else {
+                    if (dailySongs.isEmpty()) {
+                        if (!isLoading) loadExploreData()
+                    } else {
                         PlayerController.playSong(dailySongs.first(), dailySongs)
                         onOpenPlayer()
                     }
@@ -266,8 +282,6 @@ fun TvExploreScreen(
             }
         }
 
-        item("area-error") { if (areaFailed) TvTextAction(stringResource(R.string.tv_load_failed)) { areaRevision++ } }
-
         // 2. 甄选推荐歌单横向画廊
         item {
             Column {
@@ -277,7 +291,7 @@ fun TvExploreScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (NcmApi.isLogin) "为你甄选的专属歌单" else "热门精选歌单",
+                        text = if (ncmAccount.isReady) "为你甄选的专属歌单" else "热门精选歌单",
                         color = Color.White,
                         fontSize = 19.sp,
                         fontWeight = FontWeight.SemiBold
@@ -291,16 +305,10 @@ fun TvExploreScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                if (isLoading && playlists.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(100.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                    }
-                } else {
+                if (!isLoading && !exploreFailed && playlists.isEmpty()) {
+                    TvStatusText(stringResource(R.string.tv_empty_result))
+                }
+                if (playlists.isNotEmpty()) {
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         contentPadding = PaddingValues(vertical = 4.dp)
@@ -316,26 +324,13 @@ fun TvExploreScreen(
                                     )
                                     .padding(10.dp)
                             ) {
-                                AsyncImage(
-                                    model = pl.coverUrl,
-                                    contentDescription = pl.name,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(126.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(PixelPlaySurfaceVariant)
-                                )
+                                TvArtwork(pl.coverUrl, Modifier.fillMaxWidth().aspectRatio(1f))
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
                                     text = pl.name,
-                                    color = Color.White,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.bodySmall,
                                     maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    lineHeight = 17.sp,
-                                    modifier = Modifier.height(34.dp)
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -352,77 +347,34 @@ fun TvExploreScreen(
                 8 to "日本新声",
                 16 to "韩国K-Pop"
             )
-            Column {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text(
-                            text = "全球新歌速递",
-                            color = Color.White,
-                            fontSize = 19.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        areaTabs.forEach { (type, label) -> key(type) {
-                            val isSelected = selectedAreaType == type
-                            var focused by remember { mutableStateOf(false) }
-                            Box(
-                                modifier = Modifier
-                                    .tvPillFocusable(
-                                        isSelected = isSelected,
-                                        onFocusChanged = { focused = it },
-                                        onClick = { selectedAreaType = type }
-                                    )
-                                    .padding(horizontal = 14.dp, vertical = 6.dp)
-                            ) {
-                                Text(
-                                    text = label,
-                                    color = if (focused) PixelPlayPurpleDark else Color.White,
-                                    fontSize = 16.sp,
-                                    fontWeight = if (isSelected || focused) FontWeight.Bold else FontWeight.Medium
-                                )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.tv_discover_new_songs), style = MaterialTheme.typography.titleMedium)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(areaTabs, key = { it.first }) { (type, label) ->
+                        TvTextAction(label, selected = selectedAreaType == type) {
+                            if (selectedAreaType != type) {
+                                selectedAreaType = type
+                                areaSongs = emptyList()
+                                areaLoading = true
+                                areaFailed = false
                             }
-                        } }
-                    }
-
-                    var playAllFocused by remember { mutableStateOf(false) }
-                    Row(
-                        modifier = Modifier
-                            .tvPillFocusable(
-                                onFocusChanged = { playAllFocused = it },
-                                onClick = {
-                                    if (areaSongs.isNotEmpty()) {
-                                        PlayerController.playSong(areaSongs.first(), areaSongs)
-                                    }
-                                }
-                            )
-                            .padding(horizontal = 14.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.PlayArrow,
-                            contentDescription = null,
-                            tint = if (playAllFocused) PixelPlayPurpleDark else Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = "播放本区全部",
-                            color = if (playAllFocused) PixelPlayPurpleDark else Color.White,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        }
                     }
                 }
+                when {
+                    areaLoading -> TvStatusText(stringResource(R.string.tv_loading))
+                    areaFailed -> {
+                        TvStatusText(stringResource(if (areaSongs.isEmpty()) R.string.tv_load_failed else R.string.tv_refresh_failed), error = true)
+                        TvTextAction(stringResource(R.string.tv_retry)) { areaRevision++ }
+                    }
+                    areaSongs.isEmpty() -> TvStatusText(stringResource(R.string.tv_empty_result))
+                }
+                if (areaSongs.isNotEmpty()) {
+                    TvTextAction(stringResource(R.string.tv_play_all)) { PlayerController.playSong(areaSongs.first(), areaSongs) }
+                }
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                val rows = areaSongs.chunked(3)
+                val columns = if (rememberTvWindowSpec().compact) 1 else 2
+                val rows = areaSongs.chunked(columns)
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     rows.forEachIndexed { rowIndex, rowSongs -> key(rowIndex) {
                         Row(
@@ -436,7 +388,7 @@ fun TvExploreScreen(
                                     TvCompactSongCard(
                                         song = song,
                                         isCurrent = currentSong?.key == song.key,
-                                        rank = rowIndex * 3 + column + 1,
+                                        rank = rowIndex * columns + column + 1,
                                         modifier = Modifier.weight(1f),
                                         onClick = {
                                             PlayerController.playSong(song, areaSongs)
@@ -444,7 +396,7 @@ fun TvExploreScreen(
                                     )
                                 }
                             }
-                            repeat(3 - rowSongs.size) {
+                            repeat(columns - rowSongs.size) {
                                 Spacer(modifier = Modifier.weight(1f))
                             }
                         }
@@ -495,28 +447,28 @@ fun TvCompactSongCard(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        rank?.let { Text(it.toString(), style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant) }
+        rank?.let {
+            Text(it.toString(), Modifier.width(36.dp), style = MaterialTheme.typography.labelMedium,
+                color = scheme.onSurfaceVariant, textAlign = TextAlign.End, maxLines = 1)
+        }
         TvArtwork(song.coverUrl, Modifier.size(44.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 song.title,
                 style = MaterialTheme.typography.titleMedium,
-                color = if (active) scheme.primary else scheme.onSurface,
+                color = scheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                song.artist,
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(song.artist, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                SongPlatformBadge(song.source, modifier = Modifier.widthIn(max = 96.dp))
+            }
         }
         if (active) {
-            Icon(Icons.Rounded.Equalizer, contentDescription = stringResource(R.string.tv_current_track), tint = scheme.primary, modifier = Modifier.size(18.dp))
-        } else {
-            SongPlatformBadge(source = song.source)
+            Icon(Icons.Rounded.Equalizer, contentDescription = stringResource(R.string.tv_current_track),
+                tint = scheme.primary, modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -580,7 +532,7 @@ fun TvToplistScreen(
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             if (!compact || !compactDetail) {
                 Column(
-                    (if (compact) Modifier.fillMaxWidth() else Modifier.width(260.dp))
+                    (if (compact) Modifier.fillMaxWidth() else Modifier.width(232.dp))
                         .fillMaxHeight().focusGroup(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -617,7 +569,8 @@ fun TvToplistScreen(
                                 entry.name,
                                 Modifier.fillMaxWidth().focusRequester(entryFocus)
                                     .onFocusChanged { if (it.isFocused) lastBoardId = entry.id },
-                                selected = board.id == entry.id
+                                selected = board.id == entry.id,
+                                contentAlignment = Alignment.CenterStart
                             ) {
                                 boardId = entry.id
                                 if (compact) compactDetail = true
@@ -654,10 +607,10 @@ fun TvToplistScreen(
                             TvTextAction("播放全部") { PlayerController.playSong(songs.first(), songs) }
                         }
                     }
-                    if (failed) Text(stringResource(if (songs.isEmpty()) R.string.tv_load_failed else R.string.tv_refresh_failed), color = MaterialTheme.colorScheme.error)
+                    if (failed) TvStatusText(stringResource(if (songs.isEmpty()) R.string.tv_load_failed else R.string.tv_refresh_failed), error = true)
                     when {
-                        loading && songs.isEmpty() -> CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
-                        songs.isEmpty() && !failed -> Text(stringResource(R.string.tv_empty_result), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        loading && songs.isEmpty() -> TvStatusText(stringResource(R.string.tv_loading))
+                        songs.isEmpty() && !failed -> TvStatusText(stringResource(R.string.tv_empty_result))
                         songs.isEmpty() -> Unit
                         else -> LazyVerticalGrid(
                             columns = GridCells.Adaptive(320.dp),
@@ -692,8 +645,6 @@ fun TvSearchScreen(
     var phoneInput by remember { mutableStateOf(false) }
     var receivedPhoneInput by remember { mutableStateOf(false) }
     val resultFocus = remember { FocusRequester() }
-    val retryFocus = remember { FocusRequester() }
-    val gridState = rememberLazyGridState()
     val imeVisible = WindowInsets.isImeVisible
 
     var query by rememberSaveable { mutableStateOf("") }
@@ -714,13 +665,17 @@ fun TvSearchScreen(
     var failed by remember { mutableStateOf(false) }
     var songs by remember { mutableStateOf<List<Song>>(emptyList()) }
     var playlistResults by remember { mutableStateOf<List<Playlist>>(emptyList()) }
-    var resultsKey by remember { mutableStateOf("") }
+    val requestKey = Triple(submittedQuery, platform, playlists)
+    val gridState = key(requestKey) { rememberLazyGridState() }
+    var resultsKey by remember { mutableStateOf<Triple<String, BuiltInSourceSearchApi.MusicPlatform, Boolean>?>(null) }
     var hotKeywords by remember { mutableStateOf<List<String>>(emptyList()) }
     var history by remember { mutableStateOf(SessionManager.getSearchHistory(context)) }
 
     fun submit(word: String = query) {
         val trimmed = word.trim()
         if (trimmed.isEmpty()) return
+        val refreshingResults = resultsKey == Triple(trimmed, platform, playlists) &&
+            (songs.isNotEmpty() || playlistResults.isNotEmpty())
         keyboard?.hide()
         editing = false
         imeWasVisible = false
@@ -729,7 +684,7 @@ fun TvSearchScreen(
         SessionManager.addSearchHistory(context, trimmed)
         history = SessionManager.getSearchHistory(context)
         loading = true
-        focusResults = true
+        focusResults = !refreshingResults
         // The editor or the tapped suggestion chip leaves composition; park focus on the search
         // card so the remote never has nothing focused while the request runs.
         if (!submitFocused) restoreSearchFocus = true
@@ -777,13 +732,15 @@ fun TvSearchScreen(
         hotKeywords = items.mapNotNull { (it as? Map<*, *>)?.get("searchWord") as? String }
             .filter(String::isNotBlank).distinct().take(12)
     }
-    LaunchedEffect(submittedQuery, platform, playlists, revision) {
+    LaunchedEffect(requestKey, revision) {
         if (submittedQuery.isBlank()) return@LaunchedEffect
         loading = true
         failed = false
-        val key = "$submittedQuery/" + platform.key + "/$playlists"
-        if (resultsKey != key) { songs = emptyList(); playlistResults = emptyList() }
-        resultsKey = key
+        if (resultsKey != requestKey) {
+            songs = emptyList()
+            playlistResults = emptyList()
+        }
+        resultsKey = requestKey
         if (playlists) {
             val response = BuiltInSourceSearchApi.searchPlaylists(submittedQuery, limit = 24)
             ensureActive()
@@ -801,6 +758,10 @@ fun TvSearchScreen(
         }
         loading = false
     }
+
+    val hasResults = resultsKey == requestKey && (if (playlists) playlistResults.isNotEmpty() else songs.isNotEmpty())
+    val searching = submittedQuery.isNotBlank() && (loading || resultsKey != requestKey)
+    val searchFailed = resultsKey == requestKey && failed
 
     Column(
         modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 6.dp),
@@ -824,7 +785,7 @@ fun TvSearchScreen(
                         Box {
                             if (query.isEmpty()) {
                                 Text(
-                                    "搜索歌名、歌手、专辑",
+                                    stringResource(R.string.tv_search_hint),
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -864,11 +825,11 @@ fun TvSearchScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Text(query.ifBlank { "搜索歌名、歌手、专辑" }, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(query.ifBlank { stringResource(R.string.tv_search_hint) }, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             TvTextAction(
-                "搜索",
+                stringResource(R.string.tv_search_action),
                 Modifier.focusRequester(submitFocus).onFocusChanged { submitFocused = it.isFocused }
             ) {
                 if (query.isBlank()) openEditor() else submit()
@@ -895,7 +856,7 @@ fun TvSearchScreen(
                     platform = option
                 }
             }
-            item("playlists") { TvTextAction("歌单", selected = playlists) { playlists = true } }
+            item("playlists") { TvTextAction(stringResource(R.string.tv_search_playlists), selected = playlists) { playlists = true } }
         }
         val suggestions = history.ifEmpty { hotKeywords }
         if (suggestions.isNotEmpty() && !editing && (submittedQuery.isBlank() || query.isBlank())) {
@@ -916,26 +877,28 @@ fun TvSearchScreen(
             }
         }
 
-        val hasResults = if (playlists) playlistResults.isNotEmpty() else songs.isNotEmpty()
-        if (hasResults && !loading) rememberTvFocusScroller { key ->
+        if (hasResults) rememberTvFocusScroller { key ->
             val index = if (playlists) playlistResults.indexOfFirst { "playlist/${it.source}/${it.id}" == key }
             else songs.indexOfFirst { "song/${it.key.sourceId}/${it.key.trackId}" == key }
             if (index >= 0) gridState.scrollToItem(index)
             index >= 0
         }
-        if (failed && hasResults) TvTextAction(stringResource(R.string.tv_refresh_failed)) { submit(submittedQuery) }
-        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Column(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
             when {
-                loading && !hasResults -> CircularProgressIndicator()
-                failed && !hasResults -> TvTextAction("搜索失败，重试", Modifier.focusRequester(retryFocus)) { submit(submittedQuery) }
-                !hasResults -> Text(
-                    if (submittedQuery.isBlank()) "输入关键词开始搜索" else "没有找到匹配的结果",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                else -> LazyVerticalGrid(
+                submittedQuery.isBlank() -> TvStatusText(stringResource(R.string.tv_search_idle))
+                searching -> TvStatusText(stringResource(R.string.tv_search_loading, submittedQuery))
+                searchFailed -> {
+                    TvStatusText(stringResource(if (hasResults) R.string.tv_refresh_failed else R.string.tv_search_failed), error = true)
+                    TvTextAction(stringResource(R.string.tv_retry)) { submit(submittedQuery) }
+                }
+                !hasResults -> TvStatusText(stringResource(R.string.tv_search_empty, submittedQuery))
+            }
+            if (hasResults) {
+                LazyVerticalGrid(
                     columns = GridCells.Adaptive(if (playlists) 144.dp else 240.dp),
                     state = gridState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -947,12 +910,7 @@ fun TvSearchScreen(
                                 first.fillMaxWidth().tvFocusableCard(focusKey = "playlist/${item.source}/${item.id}", onClick = { onOpenPlaylist(item) }).padding(10.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                AsyncImage(
-                                    item.coverUrl,
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp))
-                                )
+                                TvArtwork(item.coverUrl, Modifier.fillMaxWidth().aspectRatio(1f))
                                 Text(item.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             }
                         }
@@ -971,26 +929,11 @@ fun TvSearchScreen(
             }
         }
     }
-    LaunchedEffect(focusResults, loading, failed, songs, playlistResults, revision, editing) {
-        if (!focusResults || loading) return@LaunchedEffect
-        // The user reopened the editor while the request ran: never pull focus out of it.
-        if (editing) {
-            focusResults = false
-            return@LaunchedEffect
-        }
-        withFrameNanos { }
-        if (loading || editing) return@LaunchedEffect
-        // Only advance if focus is still parked on the search card or button. Empty results leave
-        // focus where it is (the old fallback targeted searchFocus, which may be detached).
-        if (searchCardFocused || submitFocused) {
-            when {
-                failed -> retryFocus.tryRequestFocus()
-                if (playlists) playlistResults.isNotEmpty() else songs.isNotEmpty() -> {
-                    gridState.scrollToItem(0)
-                    withFrameNanos { }
-                    resultFocus.tryRequestFocus()
-                }
-            }
+    LaunchedEffect(focusResults, searching, searchFailed, hasResults, requestKey, revision, editing) {
+        if (!focusResults || searching) return@LaunchedEffect
+        if (!editing && !searchFailed && hasResults && (searchCardFocused || submitFocused)) {
+            withFrameNanos { }
+            if (searchCardFocused || submitFocused) resultFocus.tryRequestFocus()
         }
         focusResults = false
     }

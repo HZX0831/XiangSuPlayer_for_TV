@@ -47,6 +47,7 @@ class PlaybackService : MediaSessionService() {
             override fun isCommandAvailable(command: Int): Boolean = availableCommands.contains(command)
             override fun play() = engine.play()
             override fun pause() = engine.pause()
+            override fun stop() = engine.stop()
             override fun seekToNext() = engine.playNext()
             override fun seekToNextMediaItem() = engine.playNext()
             override fun seekToPrevious() = engine.playPrevious()

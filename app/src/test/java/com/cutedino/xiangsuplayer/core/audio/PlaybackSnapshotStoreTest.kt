@@ -1,11 +1,12 @@
 package com.cutedino.xiangsuplayer.core.audio
 
 import android.app.Application
-import androidx.test.core.app.ApplicationProvider
+import org.robolectric.RuntimeEnvironment
 import com.cutedino.xiangsuplayer.core.model.Song
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -15,7 +16,7 @@ import java.io.File
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
 class PlaybackSnapshotStoreTest {
-    private val context = ApplicationProvider.getApplicationContext<Application>()
+    private val context = RuntimeEnvironment.getApplication()
     private val store = PlaybackSnapshotStore(context)
     private val file = File(context.noBackupFilesDir, "playback-resume.json")
 
@@ -33,6 +34,20 @@ class PlaybackSnapshotStoreTest {
         assertFalse(file.readText().contains("example.test"))
         store.write(null)
         assertNull(store.read())
+    }
+
+    @Test fun largeUtf8SnapshotPreservesCurrentTrackAndPosition() {
+        val queue = (1..510).map {
+            PlaybackQueueEntry("entry-$it", Song(it.toString(), "曲".repeat(1800), "", ""))
+        }
+        val current = queue[240]
+        store.write(PlaybackSnapshot(queue, current.id, 17000L, PlayMode.SEQUENCE))
+        val restored = checkNotNull(store.read())
+        assertEquals(current.id, restored.currentId)
+        assertEquals(current.song.id, restored.queue.first { it.id == current.id }.song.id)
+        assertEquals(17000L, restored.positionMs)
+        assertTrue(file.length() <= 2_097_152L)
+        assertTrue(restored.queue.size in 2..499)
     }
 
     @Test fun rejectsCorruptAndUnsupportedSnapshots() {

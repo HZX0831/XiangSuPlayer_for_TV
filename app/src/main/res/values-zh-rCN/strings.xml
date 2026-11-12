@@ -155,9 +155,9 @@
     <string name="tab_settings">设置</string>
     <string name="tv_home_title">一起听点什么</string>
     <string name="tv_home_start">从一首歌开始</string>
-    <string name="tv_home_find">找首歌</string>
+    <string name="tv_home_find">找歌</string>
     <string name="tv_home_resume">继续播放</string>
-    <string name="tv_home_open_player">查看播放</string>
+    <string name="tv_home_open_player">打开播放器</string>
     <string name="tv_home_recent">最近听过</string>
     <string name="tv_home_no_recent">播放过的音乐会出现在这里</string>
     <string name="tv_home_discover">发现音乐</string>
@@ -225,4 +225,25 @@
     <string name="tv_about_tv_original">• TV 原维护者：cutedino</string>
     <string name="tv_about_tv_maintainer">• TV 现维护者：HZX0831</string>
     <string name="tv_about_acknowledgments">• 鸣谢：暮间雾、忘羡、落雪音乐（LX Music）开源社区、NeteaseCloudMusicApi（Moriafly）</string>
+    <string name="tv_ncm_profile_loading">正在读取网易云账号资料…</string>
+    <string name="tv_ncm_profile_failed">已授权，暂时无法读取账号资料</string>
+    <string name="tv_ncm_profile_retry">重试读取资料</string>
+    <string name="tv_search_hint">搜索歌名、歌手或专辑</string>
+    <string name="tv_search_action">搜索</string>
+    <string name="tv_search_playlists">歌单</string>
+    <string name="tv_search_idle">输入歌名、歌手或专辑开始搜索</string>
+    <string name="tv_search_loading">正在搜索「%1$s」…</string>
+    <string name="tv_search_failed">搜索失败，请重试</string>
+    <string name="tv_search_empty">未找到与「%1$s」匹配的结果</string>
+    <string name="tv_seek_preview">左右调整 5 秒 · 确定跳转 · 返回取消</string>
+    <string name="tv_loading">正在加载…</string>
+    <string name="tv_discover_new_songs">全球新歌速递</string>
+    <string name="tv_refresh">刷新</string>
+    <string name="tv_playlist_empty">歌单暂无歌曲</string>
+    <string name="tv_playlist_loaded">已加载 %1$d / %2$d 首</string>
+    <string name="tv_quality_request_title">默认请求音质</string>
+    <string name="tv_quality_request_summary">优先请求所选档位，实际播放音质取决于可用音源</string>
+    <string name="tv_directory_loading">正在读取目录…</string>
+    <string name="tv_karaoke_queue_empty">队列为空，可用手机点歌</string>
+    <string name="tv_qr_refresh">刷新二维码</string>
 </resources>

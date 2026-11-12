@@ -7,6 +7,7 @@ import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.moriafly.ncm.readResponse
+import net.moriafly.ncm.readBounded
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
@@ -16,11 +17,13 @@ class UrlTemplateSourceAdapter(
     override val sourceName: String,
     private val urlTemplate: String,
     override val priority: Int = 70,
-    private val okHttpClient: OkHttpClient = SourceNetwork.configure(OkHttpClient.Builder())
+    okHttpClient: OkHttpClient = SourceNetwork.configure(OkHttpClient.Builder())
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(8, TimeUnit.SECONDS)
         .build()
 ) : ISoundSourceAdapter {
+
+    private val okHttpClient = okHttpClient.newBuilder().followRedirects(false).build()
 
     override suspend fun search(query: String, page: Int, limit: Int): Result<List<Song>> {
         return Result.failure(UnsupportedOperationException("$sourceName 仅提供音源解析"))
@@ -39,11 +42,13 @@ class UrlTemplateSourceAdapter(
                 .build()
 
             okHttpClient.newCall(request).readResponse { response ->
-                if (!response.isSuccessful) {
-                    throw IllegalStateException("$sourceName HTTP 请求失败 Status=${response.code}")
+                if (response.isRedirect) {
+                    val url = playbackLocation(response) ?: throw SourcePolicyException("无效的音源重定向")
+                    return@readResponse StreamResult.Full(url, sourceName = sourceName)
                 }
+                if (!response.isSuccessful) throw SourceHttpException(response.code)
 
-                val bodyStr = response.body?.string() ?: throw IllegalStateException("响应体为空")
+                val bodyStr = response.body?.readBounded(256 * 1024)?.toString(Charsets.UTF_8) ?: throw IllegalStateException("响应体为空")
                 
                 // 处理可能返回的 JSON 格式或直接 Location/URL 字符串
                 val extractedUrl = parseUrlFromBodyOrRedirect(bodyStr, response)
@@ -71,12 +76,12 @@ class UrlTemplateSourceAdapter(
                 }
             } catch (_: Exception) {}
         }
-        val locationHeader = response.header("Location")
-        if (!locationHeader.isNullOrBlank()) {
-            return locationHeader
-        }
-        return ""
+        return playbackLocation(response).orEmpty()
     }
+
+    private fun playbackLocation(response: okhttp3.Response): String? =
+        response.header("Location")?.takeIf(String::isNotBlank)?.let(response.request.url::resolve)
+            ?.toString()?.takeIf { SourceNetwork.allowsPlayback(it, allowLegacy = true) }
 
     override suspend fun getLyrics(songId: String): Result<List<LyricLine>> {
         return Result.failure(UnsupportedOperationException("$sourceName 不提供歌词"))

@@ -1,6 +1,25 @@
 # TV 根工程迁移与前端验收
 
-最新结果见本文「正式签名包与图标检查」；发布前复验、迁移与前端重构结果按阶段保留。
+## 主流程 UI 精修
+
+本轮使用 JDK 21、Gradle 8.13 和 Android SDK 36。Debug 与 AndroidTest APK 构建通过。两模块 JVM 测试共 85 项通过（app 72 项、ncmapi 13 项），app Lint 为 0 错误。缺少的两个原版本测试依赖从项目已有的 Maven 镜像取得，临时缓存位于构建目录。
+
+| 逻辑画布与字号 | 首页 | 播放 |
+| --- | --- | --- |
+| 960×540 dp / 1.0 | [截图](implementation/main-flow/home-populated-standard.png) | [截图](implementation/main-flow/player-lyrics-standard.png) |
+| 960×540 dp / 1.3 | [截图](implementation/main-flow/home-populated-large.png) | [截图](implementation/main-flow/player-lyrics-large.png) |
+| 640×360 dp / 1.0 | [截图](implementation/main-flow/home-populated-compact.png) | [截图](implementation/main-flow/player-lyrics-compact.png) |
+| 640×360 dp / 1.3 | [截图](implementation/main-flow/home-populated-compact-large.png) | [截图](implementation/main-flow/player-lyrics-compact-large.png) |
+
+可对照改版前的 [首页](implementation/v2.1.0-preview/home-populated-preview-standard.png)、[播放页](implementation/v2.1.0-preview/player-lyrics-preview-standard.png) 和 [榜单](implementation/v2.1.0-preview/toplist-rows-preview-standard.png)。本轮另有 [长歌词与英文译文](implementation/main-flow/player-pure-long-compact-large.png)、[无封面无歌词](implementation/main-flow/player-no-lyrics-compact-large.png)、[榜单](implementation/main-flow/toplist-rows-standard.png)、[音质设置](implementation/main-flow/settings-playback-standard.png) 和 [市场错误](implementation/main-flow/market-error-standard.png)。
+
+API 36 只读 TV 模拟器的四组原生截图回归各通过 10 项，覆盖焦点、画布边界及空数据。用例里的封面、曲目和长歌词为合成样本。紧凑大字号额外通过纯白壁纸用例。基于最低遮罩的截图背景像素，正文对比度为 9.45:1，次要文字为 5.97:1。 [纯白壁纸与长中英文标题](implementation/main-flow/home-white-wallpaper-compact-large.png)
+
+实际应用 D-pad 路径从首页按右、确定进入搜索，再按确定打开键盘。返回键依次关闭键盘并回到搜索框、回到搜索栏目、回到首页栏目、返回系统启动器。截图记录了 [电视键盘](implementation/main-flow/search-keyboard.png) 和 [键盘关闭后的搜索框焦点](implementation/main-flow/search-ready.png)。
+
+在线查询 hello 实际返回了网易云和酷狗曲目。合成队列冷启动保持暂停，打开重复条目的子菜单后可返回队列，移除一条后仍保留另一条。在线查询提交和重复条目移除使用模拟器点击，系统返回使用返回键。在线流的定位取消和重复条目的遥控器回焦仍需完整端到端复验。 [搜索中](implementation/main-flow/search-loading.png) · [搜索结果](implementation/main-flow/search-submitted.png) · [暂停恢复](implementation/main-flow/cold-restored.png) · [移除前](implementation/main-flow/player-duplicate-queue.png) · [移除后](implementation/main-flow/player-queue-after-remove.png)
+
+以下保留正式签名包检查、发布前复验、迁移和前端重构的历史结果。
 
 ## 正式签名包与图标检查
 

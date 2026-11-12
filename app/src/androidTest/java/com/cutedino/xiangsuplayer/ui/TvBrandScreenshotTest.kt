@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
@@ -43,6 +44,7 @@ import org.junit.runner.RunWith
 import java.io.File
 
 /** Native render fixtures. These are synthetic songs, not live-service playback evidence. */
+@OptIn(ExperimentalTestApi::class)
 @RunWith(AndroidJUnit4::class)
 class TvBrandScreenshotTest {
     @get:Rule val rule = createComposeRule()
@@ -62,6 +64,13 @@ class TvBrandScreenshotTest {
         file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()
         return Song("review-a", "沿海公路", "林间来信", "南方回声", file.toURI().toString(), 258000L, "local:review")
     }
+    private fun pressRemote(keyCode: Int) {
+        rule.onAllNodes(isFocused(), useUnmergedTree = true).onLast().performKeyInput {
+            pressKey(Key(keyCode))
+        }
+        rule.waitForIdle()
+    }
+
     private fun capture(name: String) {
         rule.waitForIdle(); SystemClock.sleep(1800)
         val dir = File(instrumentation.targetContext.getExternalFilesDir(null), "design-review").apply { mkdirs() }
@@ -79,23 +88,63 @@ class TvBrandScreenshotTest {
                     TvHomeContent(song, false, listOf(song, song.copy(id = "review-b", title = "远处的灯", artist = "纸间乐队"),
                         song.copy(id = "review-c", title = "夜航", artist = "北岸二重奏")), {}, {}, {})
                 }, miniPlayer = { PixelPlayTvTheme(song.coverUrl) {
-                    TvMiniPlayer(song, false, PlayMode.SEQUENCE, .395f, null, {}, {}, {}, {}, {}, Modifier.testTag("mini-player"))
+                    TvMiniPlayer(song, false, PlayMode.SEQUENCE, .395f, null, {}, {}, {}, {}, {}, Modifier.testTag("mini-player"), showArtwork = false)
                 } })
             }
         }
         rule.onNode(hasText("继续播放") and hasClickAction()).performSemanticsAction(SemanticsActions.RequestFocus)
-        val badge = rule.onNodeWithText("本地目录").getUnclippedBoundsInRoot()
+        val badge = rule.onNodeWithTag("home-cover-source").getUnclippedBoundsInRoot()
         val stage = rule.onNodeWithTag("home-stage").getUnclippedBoundsInRoot()
         assertTrue("Artwork source label is clipped", badge.bottom <= stage.bottom)
         capture("home-populated")
         rule.onNodeWithText("首页").performSemanticsAction(SemanticsActions.RequestFocus)
-        repeat(4) { instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_DOWN) }
+        repeat(4) { pressRemote(KeyEvent.KEYCODE_DPAD_DOWN) }
         fullyVisible(rule.onNode(hasText("更多") and hasClickAction()))
         val more = rule.onNodeWithText("更多").fetchSemanticsNode().boundsInRoot
         val mini = rule.onNodeWithTag("mini-player").fetchSemanticsNode().boundsInRoot
         assertTrue("Navigation overlaps MiniPlayer", more.bottom <= mini.top)
         capture("home-more-focus")
     }
+    @Test fun whiteWallpaperKeepsLongTrackReadable() {
+        instrumentation.setInTouchMode(false)
+        val file = File(instrumentation.targetContext.cacheDir, "review-white-wallpaper.png")
+        val white = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
+        white.eraseColor(android.graphics.Color.WHITE)
+        file.outputStream().use { white.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        white.recycle()
+        val url = file.toURI().toString()
+        val song = fixture().copy(
+            title = "沿着海岸慢慢回家 The Quiet Road Home",
+            artist = "林间来信 · North Coast Duo",
+            coverUrl = url
+        )
+        rule.setContent {
+            PixelPlayTvTheme {
+                Box(Modifier.fillMaxSize()) {
+                    TvImmersiveBackdrop(null, useWallpaper = true, wallpaperUrl = url, wallpaperOpacityPercent = 0)
+                    val focus = remember { FocusRequester() }
+                    TvBrowseFrame(
+                        navigation = { TvNavigationRail(TvMainTab.EXPLORE, {}, focus) },
+                        content = { TvHomeContent(song, false, emptyList(), {}, {}, {}) },
+                        miniPlayer = {}
+                    )
+                }
+            }
+        }
+        var background = android.graphics.Color.BLACK
+        rule.waitUntil(8_000) {
+            val screenshot = instrumentation.uiAutomation.takeScreenshot()
+            background = screenshot.getPixel(8, 8)
+            screenshot.recycle()
+            android.graphics.Color.red(background) > 32
+        }
+        assertTrue(androidx.core.graphics.ColorUtils.calculateContrast(0xfff4f7fc.toInt(), background) >= 4.5)
+        assertTrue(androidx.core.graphics.ColorUtils.calculateContrast(0xffb8c8dd.toInt(), background) >= 4.5)
+        rule.onNode(hasText("继续播放") and hasClickAction()).performSemanticsAction(SemanticsActions.RequestFocus)
+        fullyVisible(rule.onNode(hasText("继续播放") and hasClickAction()))
+        capture("home-white-wallpaper")
+    }
+
     @Test fun playerWithLyricsAndArtwork() {
         instrumentation.setInTouchMode(false)
         val song = fixture()
@@ -118,12 +167,12 @@ class TvBrandScreenshotTest {
         val pause = rule.onNode(hasText("暂停") and hasClickAction())
         pause.performSemanticsAction(SemanticsActions.RequestFocus)
         pause.assertIsFocused()
-        repeat(2) { instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_RIGHT) }
+        repeat(2) { pressRemote(KeyEvent.KEYCODE_DPAD_RIGHT) }
         rule.onNode(hasText("队列") and hasClickAction()).assertIsFocused()
-        repeat(2) { instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_LEFT) }
+        repeat(2) { pressRemote(KeyEvent.KEYCODE_DPAD_LEFT) }
         pause.assertIsFocused()
         capture("player-lyrics")
-        repeat(3) { instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_RIGHT) }
+        repeat(3) { pressRemote(KeyEvent.KEYCODE_DPAD_RIGHT) }
         fullyVisible(rule.onNode(hasText("更多") and hasClickAction()))
     }
     @Test fun toplistUsesReadableRowsWithLongTitles() {
@@ -141,7 +190,7 @@ class TvBrandScreenshotTest {
             }
         }
         rule.onNode(hasText("飙升榜") and hasClickAction()).performSemanticsAction(SemanticsActions.RequestFocus)
-        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER)
+        pressRemote(KeyEvent.KEYCODE_DPAD_CENTER)
         rule.onNodeWithText("沿海公路：在很长的夜里慢慢回家").assertIsDisplayed()
         capture("toplist-rows")
     }
@@ -167,14 +216,14 @@ class TvBrandScreenshotTest {
         var reached = false
         repeat(16) {
             if (!reached) {
-                instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_DOWN)
+                pressRemote(KeyEvent.KEYCODE_DPAD_DOWN)
                 rule.waitForIdle()
                 reached = rule.onAllNodes(compatibility).fetchSemanticsNodes().any { it.config.contains(SemanticsProperties.Focused) && it.config[SemanticsProperties.Focused] }
             }
         }
         fullyVisible(rule.onNode(compatibility))
         capture("settings-compatibility")
-        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_DOWN)
+        pressRemote(KeyEvent.KEYCODE_DPAD_DOWN)
         fullyVisible(rule.onNode(hasText("主项目作者", substring = true)))
         capture("settings-about")
     }
@@ -205,10 +254,10 @@ class TvBrandScreenshotTest {
                 navigation = { TvNavigationRail(TvMainTab.EXPLORE, {}, focus) },
                 content = { TvHomeContent(null, false, emptyList(), {}, {}, { destination = it }) }, miniPlayer = {})
         } }
-        val find = rule.onNode(hasText("找首歌") and hasClickAction())
+        val find = rule.onNode(hasText("找歌") and hasClickAction())
         find.performSemanticsAction(SemanticsActions.RequestFocus)
         fullyVisible(find)
-        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER)
+        pressRemote(KeyEvent.KEYCODE_DPAD_CENTER)
         rule.runOnIdle { org.junit.Assert.assertEquals(TvMainTab.SEARCH, destination) }
         capture("home-empty")
     }
@@ -235,7 +284,7 @@ class TvBrandScreenshotTest {
             }, controls = { TvPlayerControlRow(false, false, Modifier.fillMaxWidth(), onPrevious = {}, onPlayPause = {}, onNext = {}, onQueue = {}, onMore = {}) })
         } }
         rule.onNodeWithText("播放").performSemanticsAction(SemanticsActions.RequestFocus)
-        repeat(3) { instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_RIGHT) }
+        repeat(3) { pressRemote(KeyEvent.KEYCODE_DPAD_RIGHT) }
         fullyVisible(rule.onNode(hasText("更多") and hasClickAction()))
         capture("player-no-lyrics")
     }
@@ -247,11 +296,11 @@ class TvBrandScreenshotTest {
         rule.onNodeWithText(instrumentation.targetContext.getString(com.cutedino.xiangsuplayer.R.string.tv_point_enter)).performClick()
         rule.onNodeWithText(instrumentation.targetContext.getString(com.cutedino.xiangsuplayer.R.string.tv_phone_order))
             .performSemanticsAction(SemanticsActions.RequestFocus)
-        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_RIGHT)
+        pressRemote(KeyEvent.KEYCODE_DPAD_RIGHT)
         val exit = rule.onNode(hasText(instrumentation.targetContext.getString(com.cutedino.xiangsuplayer.R.string.tv_karaoke_exit)) and hasClickAction())
         fullyVisible(exit)
         capture("karaoke-empty")
-        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER)
+        pressRemote(KeyEvent.KEYCODE_DPAD_CENTER)
         rule.runOnIdle { assertTrue(closed) }
     }
 
@@ -269,10 +318,10 @@ class TvBrandScreenshotTest {
         } } }
         val install = rule.onNode(hasText("review.zip", substring = true) and hasClickAction())
         install.performScrollTo().performSemanticsAction(SemanticsActions.RequestFocus)
-        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER)
+        pressRemote(KeyEvent.KEYCODE_DPAD_CENTER)
         rule.onNodeWithText("下载失败：请检查网络后重试").assertIsDisplayed()
         capture("market-install-error")
-        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        pressRemote(KeyEvent.KEYCODE_BACK)
         install.assertIsFocused().assertIsDisplayed()
     }
 

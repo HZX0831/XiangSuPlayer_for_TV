@@ -21,4 +21,14 @@ class LyricEngineTest {
         assertEquals("时间超出", lines.single().text)
         assertEquals(listOf(1100L, 2000L), LyricEngine.parseYrc("invalid", "[0:01.1][00:02]备用").map { it.timeMs })
     }
+
+    @Test fun partialYrcKeepsPlainLrcLines() {
+        val lines = LyricEngine.parseYrc(
+            "[1000,1000](1000,1000,0)同步\n[3000,1000]无词级标记",
+            "[00:01]同步\n[00:02]补齐\n[00:03]无词级标记"
+        )
+        assertEquals(listOf("同步", "补齐", "无词级标记"), lines.map { it.text })
+        assertTrue(lines.first().words.isNotEmpty())
+        assertTrue(lines.drop(1).all { it.words.isEmpty() })
+    }
 }

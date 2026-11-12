@@ -6,12 +6,13 @@ import android.util.Base64
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.MediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
-import java.io.ByteArrayOutputStream
-import java.io.InputStream
 import java.net.Proxy
 import java.net.URL
 import java.net.URLEncoder
@@ -67,14 +68,7 @@ object NcmRequest {
         return sb.toString()
     }
 
-    @Volatile
-    private var anonymousReady = false
-    @Volatile
-    private var anonymousRegistering = false
-    private val anonymousLock = Any()
-
-    @Volatile
-    private var anonymousToken: String? = null
+    private val anonymousRegistration = AnonymousRegistration()
 
     private fun cloudmusicDllEncodeId(id: String): String {
         val key = "3go8&$8*3*3h0k(2)2"
@@ -87,51 +81,34 @@ object NcmRequest {
         return Base64.encodeToString(digest, Base64.NO_WRAP)
     }
 
-    private suspend fun ensureAnonymousToken(sess: NcmSession?) {
-        if (anonymousReady) return
-        if (sess?.isLogin == true) { anonymousReady = true; return }
-        if (sess?.cookies?.containsKey("MUSIC_A") == true) { anonymousReady = true; return }
-        synchronized(anonymousLock) {
-            if (anonymousReady || anonymousRegistering) return
-            anonymousRegistering = true
-        }
-        var attempted = true
-        try {
+    private suspend fun ensureAnonymousToken(session: NcmSession, expected: NcmSessionSnapshot) {
+        anonymousRegistration.ensure(
+            expected.generation,
+            ready = {
+                val current = session.refresh(expected)
+                current.loggedIn || !current.cookies["MUSIC_A"].isNullOrBlank()
+            }
+        ) {
+            val current = session.refresh(expected)
             val devId = randomHex(52).uppercase()
             val username = Base64.encodeToString(
-                "$devId ${cloudmusicDllEncodeId(devId)}".toByteArray(Charsets.UTF_8),
-                Base64.NO_WRAP,
+                "$devId ${cloudmusicDllEncodeId(devId)}".toByteArray(Charsets.UTF_8), Base64.NO_WRAP
             )
-            val encrypted = NcmCrypto.weapi(mapOf("username" to username))
-            val body = encrypted.toFormBody().toByteArray(Charsets.UTF_8)
+            val body = NcmCrypto.weapi(mapOf("username" to username)).toFormBody().toByteArray(Charsets.UTF_8)
             val target = buildWeapiUrl("/api/register/anonimous")
             val headers = buildHeaders(
-                host = URL(target).host,
-                referer = WY_YX_BASE_URL + "/",
-                osEnum = OS.PC,
-                session = sess,
-                realIp = sess?.realIp,
-                contentType = "application/x-www-form-urlencoded",
-                accept = "*/*",
+                host = URL(target).host, referer = WY_YX_BASE_URL + "/", osEnum = OS.PC,
+                session = current, realIp = current.realIp,
+                contentType = "application/x-www-form-urlencoded", accept = "*/*"
             )
-            val raw = http("POST", target, headers, body, sess?.proxy)
-            if (raw.code !in 200..299) return
-            raw.setCookies.forEach { rawCookie ->
-                val head = rawCookie.split(';').firstOrNull()?.trim() ?: return@forEach
-                val idx = head.indexOf('=')
-                if (idx > 0 && head.substring(0, idx) == "MUSIC_A") {
-                    head.substring(idx + 1).takeIf { it.isNotBlank() }?.let { anonymousToken = it }
-                }
-            }
-            if (raw.setCookies.isNotEmpty()) sess?.merge(raw.setCookies)
-        } catch (cancelled: CancellationException) {
-            attempted = false
-            throw cancelled
-        } catch (_: Exception) {
-        } finally {
-            synchronized(anonymousLock) {
-                anonymousReady = attempted
-                anonymousRegistering = false
+            val raw = withTimeoutOrNull(1_500L) { http("POST", target, headers, body, current.proxy) }
+                ?: return@ensure false
+            val token = raw.setCookies.firstOrNull { it.startsWith("MUSIC_A=") }
+                ?.takeIf { it.substringAfter('=').substringBefore(';').isNotBlank() }
+            if (raw.code !in 200..299 || token == null) false
+            else {
+                session.merge(expected, listOf(token))
+                true
             }
         }
     }
@@ -149,7 +126,7 @@ object NcmRequest {
         }
     }
 
-    private fun deviceFingerprintCookies(os: OS, session: NcmSession?, includeNmtid: Boolean): String {
+    private fun deviceFingerprintCookies(os: OS, session: NcmSessionSnapshot?, includeNmtid: Boolean): String {
         val now = System.currentTimeMillis()
         val (osver, appver, channel) = osMeta(os)
         val existing = session?.cookies ?: emptyMap()
@@ -174,12 +151,15 @@ object NcmRequest {
         return sb.toString()
     }
 
+    private const val MAX_RAW_BODY = 8 * 1024 * 1024
+    private const val MAX_DECODED_BODY = 16 * 1024 * 1024
     private const val CONNECT_TIMEOUT_MS = 15_000
     private const val READ_TIMEOUT_MS = 30_000
     private val client = OkHttpClient.Builder()
         .followRedirects(false)
         .connectTimeout(CONNECT_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
         .readTimeout(READ_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
+        .callTimeout(35L, TimeUnit.SECONDS)
         .build()
 
     const val WY_YX_BASE_URL = "https://music.163.com"
@@ -190,92 +170,80 @@ object NcmRequest {
         path: String,
         params: Map<String, Any?>,
         realIp: String? = null,
+        url: String? = null
+    ): Result<NcmResponse> = weapiForSession(path, params, realIp, url)
+
+    internal suspend fun weapiForSession(
+        path: String,
+        params: Map<String, Any?>,
+        realIp: String? = null,
         url: String? = null,
-    ): Result<NcmResponse> = withContext(Dispatchers.IO) {
-        runCatching {
-            val target = url ?: buildWeapiUrl(path)
-            require(NcmEndpoint.acceptsSession(URL(target))) { "Untrusted NetEase endpoint" }
-            val sess = NcmSession.INSTANCE
-            ensureAnonymousToken(sess)
-            val osValue = sess?.os?.takeIf { it.isNotBlank() } ?: "pc"
-            val osEnum = when (osValue.lowercase()) {
+        expected: NcmSessionSnapshot? = null,
+        logout: Boolean = false
+    ): Result<NcmResponse> = request(path, url ?: buildWeapiUrl(path), expected, logout) { state ->
+        val os = state?.os.orEmpty().ifBlank { "pc" }
+        val enriched = LinkedHashMap(params)
+        state?.cookies?.get("__csrf")?.takeIf(String::isNotBlank)?.let { enriched["csrf_token"] = it }
+        RequestParts(
+            NcmCrypto.weapi(enriched).toFormBody(), when (os.lowercase()) {
                 "android" -> OS.ANDROID
                 "ios" -> OS.IOS
                 else -> OS.PC
-            }
-
-            val csrf = sess?.cookies?.get("__csrf").orEmpty()
-            val enriched = LinkedHashMap(params)
-            if (csrf.isNotBlank()) enriched["csrf_token"] = csrf
-
-            val encrypted = NcmCrypto.weapi(enriched)
-            val body = encrypted.toFormBody().toByteArray(Charsets.UTF_8)
-            val headers = buildHeaders(
-                host = URL(target).host,
-                referer = WY_YX_BASE_URL + "/",
-                osEnum = osEnum,
-                session = sess,
-                extraCookie = "os=$osValue",
-                realIp = realIp ?: sess?.realIp,
-                contentType = "application/x-www-form-urlencoded",
-                accept = "*/*",
-            )
-
-            val raw = http("POST", target, headers, body, sess?.proxy)
-            handleRawResponse(raw, URL(target), path, sess, isEapi = false)
-        }
+            }, realIp, WY_YX_BASE_URL + "/", "os=$os"
+        )
     }
 
     suspend fun eapi(
         path: String,
         params: Map<String, Any?>,
         realIp: String? = null,
-        url: String? = null,
-    ): Result<NcmResponse> = withContext(Dispatchers.IO) {
-        runCatching {
-            val fullUrl = url ?: buildEapiUrl(path)
-            require(NcmEndpoint.acceptsSession(URL(fullUrl))) { "Untrusted NetEase endpoint" }
-            val sess = NcmSession.INSTANCE
-            ensureAnonymousToken(sess)
-            val osEnum = OS.ANDROID
-            val encrypted = NcmCrypto.eapi(path, params)
-            val body = encrypted.toFormBody().toByteArray(Charsets.UTF_8)
-            val headers = buildHeaders(
-                host = URL(fullUrl).host,
-                referer = null,
-                osEnum = osEnum,
-                session = sess,
-                realIp = realIp ?: sess?.realIp,
-                contentType = "application/x-www-form-urlencoded",
-                accept = "*/*",
-            )
-            val raw = http("POST", fullUrl, headers, body, sess?.proxy)
-            handleRawResponse(raw, URL(fullUrl), path, sess, isEapi = true)
-        }
+        url: String? = null
+    ): Result<NcmResponse> = request(path, url ?: buildEapiUrl(path), isEapi = true) {
+        RequestParts(NcmCrypto.eapi(path, params).toFormBody(), OS.ANDROID, realIp)
     }
 
     suspend fun linuxapi(
         path: String,
         params: Map<String, Any?>,
-        url: String? = null,
+        url: String? = null
+    ): Result<NcmResponse> = request(path, url ?: (WY_LINUXAPI_BASE_URL + path)) {
+        RequestParts(NcmCrypto.linuxapi(params).toFormBody(), OS.PC)
+    }
+
+    private data class RequestParts(
+        val encrypted: String, val os: OS, val realIp: String? = null,
+        val referer: String? = null, val extraCookie: String? = null
+    )
+
+    private suspend fun request(
+        path: String, target: String, expected: NcmSessionSnapshot? = null, logout: Boolean = false,
+        isEapi: Boolean = false, parts: (NcmSessionSnapshot?) -> RequestParts
     ): Result<NcmResponse> = withContext(Dispatchers.IO) {
-        runCatching {
-            val target = url ?: (WY_LINUXAPI_BASE_URL + path)
-            require(NcmEndpoint.acceptsSession(URL(target))) { "Untrusted NetEase endpoint" }
-            val sess = NcmSession.INSTANCE
-            ensureAnonymousToken(sess)
-            val encrypted = NcmCrypto.linuxapi(params)
-            val body = encrypted.toFormBody().toByteArray(Charsets.UTF_8)
+        try {
+            val origin = URL(target)
+            require(NcmEndpoint.acceptsSession(origin)) { "Untrusted NetEase endpoint" }
+            val session = NcmSession.INSTANCE
+            val initial = expected ?: session?.snapshot()
+            val state = if (!logout && initial != null && session != null) {
+                session.refresh(initial)
+                ensureAnonymousToken(session, initial)
+                session.refresh(initial)
+            } else initial
+            val data = parts(state)
+            val payload = data.encrypted.toByteArray(Charsets.UTF_8)
             val headers = buildHeaders(
-                host = URL(target).host,
-                referer = null,
-                osEnum = OS.PC,
-                session = sess,
-                contentType = "application/x-www-form-urlencoded",
-                accept = "*/*",
+                host = origin.host, referer = data.referer, osEnum = data.os, session = state,
+                extraCookie = data.extraCookie, realIp = data.realIp ?: state?.realIp,
+                contentType = "application/x-www-form-urlencoded", accept = "*/*"
             )
-            val raw = http("POST", target, headers, body, sess?.proxy)
-            handleRawResponse(raw, URL(target), path, sess, isEapi = false)
+            val raw = http("POST", target, headers, payload, state?.proxy)
+            val response = handleRawResponse(raw, origin, path, if (logout) null else session, state, isEapi, headers, payload)
+            if (!logout && initial != null) session?.refresh(initial)
+            Result.success(response)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Result.failure(failure)
         }
     }
 
@@ -286,92 +254,60 @@ object NcmRequest {
         val setCookies: List<String>,
     )
 
-    private suspend fun handleRawResponse(
-        raw: Raw,
-        from: URL,
-        path: String,
-        sess: NcmSession?,
-        isEapi: Boolean,
+    internal suspend fun handleRawResponse(
+        raw: Raw, from: URL, path: String, session: NcmSession?, state: NcmSessionSnapshot?,
+        isEapi: Boolean, requestHeaders: Map<String, String>, payload: ByteArray
     ): NcmResponse {
-        if (raw.code in 300..399) {
-            val loc = raw.location
-                ?: return NcmResponse(raw.code, emptyMap(), "3xx No Location")
-
+        var response = raw
+        if (response.code in setOf(301, 302, 303, 307, 308)) {
+            val location = checkNotNull(response.location) { "NetEase redirect without Location" }
             if (path.contains("/song/url") || path.contains("player/url")) {
-                val media = URL(from, loc)
+                val media = URL(from, location)
                 require(media.protocol == "https" && media.userInfo == null) { "Untrusted media URL" }
-                val fake = mapOf(
-                    "code" to raw.code,
-                    "data" to listOf(mapOf("url" to media.toExternalForm()))
-                )
-                return NcmResponse(raw.code, fake, null)
+                return NcmResponse(200, mapOf("data" to listOf(mapOf("url" to media.toExternalForm()))), null)
             }
-
-            val target = NcmEndpoint.redirect(from, loc)
-            if (raw.setCookies.isNotEmpty()) sess?.merge(raw.setCookies)
-            val followHeaders = buildHeaders(
-                host = target.host,
-                referer = null,
-                osEnum = OS.PC,
-                session = sess,
-                accept = "*/*",
-            )
-            val raw2 = http("GET", target.toExternalForm(), followHeaders, null, sess?.proxy)
-            if (raw2.code !in 300..399 && raw2.setCookies.isNotEmpty()) sess?.merge(raw2.setCookies)
-            return parseBody(raw2.code, raw2.bodyBytes, path, isEapi = false)
+            val target = NcmEndpoint.redirect(from, location)
+            if (state != null) session?.merge(state, response.setCookies)
+            val redirectState = state?.let { session?.refresh(it) ?: it }
+            val preservePost = response.code == 307 || response.code == 308
+            val headers = requestHeaders.toMutableMap().apply {
+                if (!preservePost) remove("Content-Type")
+                if (redirectState != null && session != null) {
+                    val latest = redirectCookies(get("Cookie").orEmpty(), state?.cookies.orEmpty(), redirectState.cookies)
+                    if (latest.isNotEmpty()) put("Cookie", latest) else remove("Cookie")
+                }
+            }
+            response = http(if (preservePost) "POST" else "GET", target.toExternalForm(), headers,
+                payload.takeIf { preservePost }, redirectState?.proxy)
         }
-
-        if (raw.setCookies.isNotEmpty()) sess?.merge(raw.setCookies)
-        return parseBody(raw.code, raw.bodyBytes, path, isEapi)
+        if (response.code == 401 && state != null) session?.revokeOnUnauthorized(state, response.setCookies)
+        val parsed = parseResponse(response.code, response.bodyBytes, isEapi)
+        if (state != null && (parsed.isSuccess || parsed.code == 803)) session?.merge(state, response.setCookies)
+        return parsed
     }
 
-    private fun parseBody(code: Int, bodyBytes: ByteArray, path: String, isEapi: Boolean): NcmResponse {
-        val body = try {
-            String(decompressGzipIfNeeded(bodyBytes), Charsets.UTF_8)
-        } catch (_: Throwable) {
-            String(bodyBytes, Charsets.ISO_8859_1)
-        }
-        val parsed: Any? = when {
-            body.isBlank() -> null
-            isEapi -> runCatching { NcmCrypto.eapiResDecrypt(body) }.getOrNull()
-                ?: runCatching { NcmJson.parseAny(body) }.getOrNull()
-            else -> runCatching { NcmJson.parseAny(body) }.getOrNull()
-        }
-        val map = parsed as? Map<String, Any?> ?: emptyMap()
-        val respCode = map["code"] as? Int ?: code
-        val msg = when {
-            map.contains("message") -> map["message"]?.toString()
-            map.contains("msg") -> map["msg"]?.toString()
-            else -> null
-        }
-        return NcmResponse(respCode, map, msg)
+    internal fun parseResponse(httpCode: Int, bodyBytes: ByteArray, isEapi: Boolean = false): NcmResponse {
+        if (httpCode !in 200..299) throw NcmHttpException(httpCode)
+        if (httpCode == 204) return NcmResponse(200, emptyMap(), null)
+        val body = decompressIfNeeded(bodyBytes).toString(Charsets.UTF_8)
+        val parsed = if (isEapi) runCatching { NcmCrypto.eapiResDecrypt(body) }.getOrNull()
+            ?: NcmJson.parseAny(body) else NcmJson.parseAny(body)
+        @Suppress("UNCHECKED_CAST")
+        val map = parsed as? Map<String, Any?> ?: error("NetEase response is not a JSON object")
+        val code = if ("code" in map) map["code"].toString().toIntOrNull()
+            ?: error("Invalid NetEase business code") else 200
+        return NcmResponse(code, map, (map["message"] ?: map["msg"])?.toString())
     }
 
-    private fun decompressGzipIfNeeded(data: ByteArray): ByteArray {
+    private fun decompressIfNeeded(data: ByteArray): ByteArray {
         if (data.size < 2) return data
         if (data[0] == 0x1F.toByte() && data[1] == 0x8B.toByte()) {
-            return GZIPInputStream(data.inputStream()).use { it.readBytesCompat() }
+            return GZIPInputStream(data.inputStream()).use { it.readBounded(MAX_DECODED_BODY) }
         }
-        if (data[0] == 0x78.toByte()) {
-            return try {
-                InflaterInputStream(data.inputStream()).use { it.readBytesCompat() }
-            } catch (_: Throwable) {
-                data
-            }
+        if (data[0] == 0x78.toByte() && (((data[0].toInt() and 255) shl 8) + (data[1].toInt() and 255)) % 31 == 0) {
+            return InflaterInputStream(data.inputStream()).use { it.readBounded(MAX_DECODED_BODY) }
         }
         return data
-    }
-
-    private fun InputStream.readBytesCompat(): ByteArray {
-        val out = ByteArrayOutputStream()
-        val buf = ByteArray(8192)
-        var n: Int
-        while (true) {
-            n = this.read(buf)
-            if (n <= 0) break
-            out.write(buf, 0, n)
-        }
-        return out.toByteArray()
     }
 
     private fun buildWeapiUrl(path: String): String = when {
@@ -390,7 +326,7 @@ object NcmRequest {
         host: String,
         referer: String?,
         osEnum: OS,
-        session: NcmSession?,
+        session: NcmSessionSnapshot?,
         extraCookie: String? = null,
         realIp: String? = null,
         contentType: String? = null,
@@ -413,15 +349,7 @@ object NcmRequest {
         }
 
         val cookieSb = StringBuilder()
-        session?.toCookieHeader()?.takeIf { it.isNotBlank() }?.let {
-            cookieSb.append(it)
-        }
-        val hasMusicU = session?.cookies?.containsKey("MUSIC_U") == true
-        val musicA = anonymousToken ?: session?.cookies?.get("MUSIC_A")
-        if (!hasMusicU && musicA != null) {
-            if (cookieSb.isNotEmpty()) cookieSb.append("; ")
-            cookieSb.append("MUSIC_A=$musicA")
-        }
+        session?.cookies?.entries?.joinToString("; ") { (key, value) -> "$key=$value" }?.let(cookieSb::append)
         if (extraCookie != null) {
             if (cookieSb.isNotEmpty()) cookieSb.append("; ")
             cookieSb.append(extraCookie)
@@ -436,10 +364,6 @@ object NcmRequest {
                 append("buildver=${now.toString().substring(0, 10)}; resolution=1920x1080; ")
                 append("__csrf=$csrf; channel=$channel; ")
                 append("requestId=${now}_${Random.nextInt(1000).toString().padStart(4, '0')}")
-                val cu = session?.cookies?.get("MUSIC_U")
-                if (!cu.isNullOrBlank()) append("; MUSIC_U=$cu")
-                val ca = anonymousToken ?: session?.cookies?.get("MUSIC_A")
-                if (!ca.isNullOrBlank()) append("; MUSIC_A=$ca")
             }
             if (cookieSb.isNotEmpty()) cookieSb.append("; ")
             cookieSb.append(headerCookie)
@@ -466,7 +390,7 @@ object NcmRequest {
         }.build()
         val transport = if (proxy.isNullOrBlank()) client else client.newBuilder().proxy(parseProxy(proxy)).build()
         return transport.newCall(request).readResponse {
-            Raw(it.code(), it.body()?.bytes() ?: ByteArray(0), it.header("Location"), it.headers("Set-Cookie"))
+            Raw(it.code(), if (it.isSuccessful) it.body()?.readBounded(MAX_RAW_BODY) ?: ByteArray(0) else ByteArray(0), it.header("Location"), it.headers("Set-Cookie"))
         }
     }
 
@@ -489,7 +413,58 @@ data class NcmResponse(
 ) {
     val isSuccess: Boolean get() = code == 200
 
+    fun checkedBody(vararg acceptedCodes: Int): Map<String, Any?> {
+        if (if (acceptedCodes.isEmpty()) isSuccess else code in acceptedCodes) return body
+        throw NcmBusinessException(code)
+    }
+
+    internal fun confirmedBody(): Map<String, Any?> {
+        check("code" in body) { "Missing NetEase write confirmation" }
+        return checkedBody()
+    }
+
     inline fun <T> map(block: (Map<String, Any?>) -> T): Result<T> =
         if (isSuccess) runCatching { block(body) }
         else Result.failure(IllegalStateException("NCM code=$code msg=$message"))
+}
+
+class NcmHttpException(val status: Int) : java.io.IOException("NetEase HTTP $status")
+class NcmBusinessException(val code: Int) : IllegalStateException("NetEase business code $code")
+
+internal class AnonymousRegistration(private val nanoTime: () -> Long = System::nanoTime) {
+    private val lock = Mutex()
+    private var generation = -1L
+    private var retryAt: Long? = null
+
+    suspend fun ensure(currentGeneration: Long, ready: () -> Boolean, register: suspend () -> Boolean) {
+        lock.withLock {
+            if (generation != currentGeneration) {
+                generation = currentGeneration
+                retryAt = null
+            }
+            if (ready() || retryAt?.let { nanoTime() - it < 0 } == true) return
+            val success = try {
+                register()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                false
+            }
+            retryAt = if (success) null else nanoTime() + 5_000_000_000L
+        }
+    }
+}
+
+internal fun redirectCookies(
+    request: String,
+    previousSession: Map<String, String>,
+    refreshedSession: Map<String, String>
+): String {
+    val cookies = request.split(';').mapNotNull { item ->
+        val separator = item.indexOf('=')
+        if (separator < 0) null else item.substring(0, separator).trim() to item.substring(separator + 1)
+    }.toMap(linkedMapOf())
+    (previousSession.keys - refreshedSession.keys).forEach(cookies::remove)
+    cookies.putAll(refreshedSession)
+    return cookies.entries.joinToString("; ") { (name, value) -> "$name=$value" }
 }

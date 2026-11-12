@@ -32,7 +32,18 @@ object LyricEngine {
                 words.zipWithNext().all { (first, second) -> first.endMs <= second.startMs }
             LyricLine(start, lineText, translationFor(translations, start, lineText), words.takeIf { reliable }.orEmpty())
         }.sortedBy { it.timeMs }.distinctBy { it.timeMs }.toList()
-        return lines.ifEmpty { fallback }
+        if (lines.isEmpty()) return fallback
+        val timed = lines.associateBy { it.timeMs }
+        val missing = fallback.filter { line ->
+            if (line.timeMs in timed) false
+            else {
+                val index = lines.binarySearchBy(line.timeMs, selector = LyricLine::timeMs)
+                val insertion = -index - 1
+                sequenceOf(lines.getOrNull(insertion - 1), lines.getOrNull(insertion)).filterNotNull()
+                    .none { abs(it.timeMs - line.timeMs) <= 250L && it.text.trim() == line.text.trim() }
+            }
+        }
+        return (lines + missing).sortedBy { it.timeMs }
     }
 
     fun parse(lrcContent: String, tlyricContent: String? = null): List<LyricLine> {

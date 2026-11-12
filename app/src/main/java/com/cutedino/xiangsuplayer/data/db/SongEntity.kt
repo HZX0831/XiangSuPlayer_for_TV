@@ -64,7 +64,7 @@ fun Song.toFavoriteEntity(): SongEntity = SongEntity(
     coverUrl = coverUrl,
     durationMs = durationMs,
     sourceId = key.sourceId,
-    songmid = songmid,
+    songmid = stableSongMid,
     hash = hash,
     addedAtMs = System.currentTimeMillis()
 )
@@ -77,7 +77,7 @@ fun Song.toHistoryEntity(): PlayHistoryEntity = PlayHistoryEntity(
     coverUrl = coverUrl,
     durationMs = durationMs,
     sourceId = key.sourceId,
-    songmid = songmid,
+    songmid = stableSongMid,
     hash = hash,
     playedAtMs = System.currentTimeMillis()
 )

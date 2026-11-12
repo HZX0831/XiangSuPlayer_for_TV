@@ -13,6 +13,8 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import com.cutedino.xiangsuplayer.ui.components.TvTextAction
+import com.cutedino.xiangsuplayer.ui.components.TvStatusText
+import com.cutedino.xiangsuplayer.ui.components.TvArtwork
 import com.cutedino.xiangsuplayer.ui.main.TvCompactSongCard
 import com.cutedino.xiangsuplayer.ui.theme.LocalTvFocusMemory
 import com.cutedino.xiangsuplayer.ui.theme.TvFocusMemory
@@ -34,7 +36,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,10 +49,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.cutedino.xiangsuplayer.core.audio.PlayMode
 import com.cutedino.xiangsuplayer.core.audio.PlayerController
 import com.cutedino.xiangsuplayer.core.model.Song
@@ -87,7 +86,6 @@ class PlaylistDetailActivity : ComponentActivity() {
                     playlistName = playlistName,
                     playlistCover = playlistCover,
                     playlistSource = playlistSource,
-                    onBack = { finish() },
                     onOpenPlayer = {
                         startActivity(Intent(this, PlayerActivity::class.java))
                     }
@@ -103,7 +101,6 @@ private fun TvPlaylistDetailScreen(
     playlistName: String,
     playlistCover: String,
     playlistSource: String,
-    onBack: () -> Unit,
     onOpenPlayer: () -> Unit
 ) {
     val currentSong by PlayerController.currentSong.observeAsState()
@@ -162,8 +159,8 @@ private fun TvPlaylistDetailScreen(
     val header = remember { TvFocusMemory() }
     val tracks = remember { TvFocusMemory() }
     val mini = remember { TvFocusMemory() }
-    val backFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { backFocus.requestFocus() }
+    val refreshFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { refreshFocus.requestFocus() }
 
     Column(
         Modifier.fillMaxSize().padding(horizontal = spec.horizontalPadding, vertical = spec.verticalPadding),
@@ -181,21 +178,19 @@ private fun TvPlaylistDetailScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    TvTextAction("返回", Modifier.focusRequester(backFocus), onClick = onBack)
-                    if (playlistCover.isNotBlank()) {
-                        AsyncImage(
-                            playlistCover,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(10.dp))
-                        )
-                    }
+                    TvArtwork(playlistCover, Modifier.size(48.dp))
                     Column(Modifier.weight(1f)) {
                         Text(playlistName, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("已加载 ${songs.size} / $total 首", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.tv_playlist_loaded, songs.size, total),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     SongPlatformBadge(source = playlistSource)
-                    if (error != null && songs.isNotEmpty()) TvTextAction(stringResource(R.string.tv_playlist_retry_missing)) { retry++ }
+                    val refreshLabel = when {
+                        error == null -> R.string.tv_refresh
+                        songs.isNotEmpty() -> R.string.tv_playlist_retry_missing
+                        else -> R.string.tv_retry
+                    }
+                    TvTextAction(stringResource(refreshLabel), Modifier.focusRequester(refreshFocus), busy = isLoading) { retry++ }
                 }
                 TvPlaylistBatchActions(songs, total, onPlay = { snapshot -> PlayerController.playSong(snapshot.first(), snapshot) })
 
@@ -210,16 +205,18 @@ private fun TvPlaylistDetailScreen(
                     else -> null
                 }
             },
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.TopStart
         ) {
             CompositionLocalProvider(LocalTvFocusMemory provides tracks) {
-                when {
-                    isLoading && songs.isEmpty() -> CircularProgressIndicator()
-                    error != null && songs.isEmpty() -> TvTextAction(error.orEmpty()) { retry++ }
-                    songs.isEmpty() -> Text("歌单暂无歌曲", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    else -> LazyVerticalGrid(
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    when {
+                        isLoading -> TvStatusText(stringResource(R.string.tv_loading))
+                        error != null -> TvStatusText(error.orEmpty(), error = true)
+                        songs.isEmpty() -> TvStatusText(stringResource(R.string.tv_playlist_empty))
+                    }
+                    if (songs.isNotEmpty()) LazyVerticalGrid(
                         columns = GridCells.Adaptive(320.dp),
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
                         contentPadding = PaddingValues(vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)

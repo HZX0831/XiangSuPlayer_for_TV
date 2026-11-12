@@ -7,6 +7,7 @@ import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.moriafly.ncm.readResponse
+import net.moriafly.ncm.readBounded
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
@@ -31,23 +32,20 @@ class XingHaiSourceAdapter(
 
     override suspend fun getStreamUrl(song: Song, quality: AudioQuality): Result<StreamResult> = withContext(Dispatchers.IO) {
         runCatching {
-            // 优先尝试 VIP 接口
-            try {
-                val vipUrl = fetchVipUrl(song.id, quality)
-                if (vipUrl.isNotBlank()) {
-                    return@runCatching StreamResult.Full(url = vipUrl, sourceName = sourceName)
-                }
-            } catch (_: Exception) {
-                // VIP 接口失败，降级尝试 GD 主接口
-            }
-
-            val gdUrl = fetchGdUrl(song.id, quality)
-            if (gdUrl.isNotBlank()) {
-                StreamResult.Full(url = gdUrl, sourceName = sourceName)
-            } else {
-                throw IllegalStateException("星海音源解析未获取到有效的音频链接")
-            }
+            val fallback = SourceFallback()
+            val url = fallback.attempt { checkedUrl(fetchVipUrl(song.id, quality)) }
+                ?: fallback.attempt { checkedUrl(fetchGdUrl(song.id, quality)) }
+                ?: fallback.exhausted("星海音源解析未获取到有效的音频链接")
+            StreamResult.Full(url, sourceName = sourceName)
         }
+    }
+
+    private fun checkedUrl(url: String): String? {
+        if (url.isBlank()) return null
+        if (!SourceNetwork.allowsPlayback(url, allowLegacy = true)) {
+            throw SourcePolicyException("播放地址不符合音源安全设置")
+        }
+        return url
     }
 
     private suspend fun fetchVipUrl(songId: String, quality: AudioQuality): String {
@@ -64,8 +62,8 @@ class XingHaiSourceAdapter(
             .build()
 
         return okHttpClient.newCall(request).readResponse { response ->
-            if (!response.isSuccessful) return@readResponse ""
-            val body = response.body?.string() ?: return@readResponse ""
+            if (!response.isSuccessful) throw SourceHttpException(response.code)
+            val body = response.body?.readBounded(256 * 1024)?.toString(Charsets.UTF_8) ?: return@readResponse ""
             val json = JsonParser.parseString(body).asJsonObject
             if (json.get("code")?.asInt == 200 && json.has("data")) {
                 val dataObj = json.getAsJsonObject("data")
@@ -89,8 +87,8 @@ class XingHaiSourceAdapter(
             .build()
 
         return okHttpClient.newCall(request).readResponse { response ->
-            if (!response.isSuccessful) return@readResponse ""
-            val body = response.body?.string() ?: return@readResponse ""
+            if (!response.isSuccessful) throw SourceHttpException(response.code)
+            val body = response.body?.readBounded(256 * 1024)?.toString(Charsets.UTF_8) ?: return@readResponse ""
             val json = JsonParser.parseString(body).asJsonObject
             json.get("url")?.asString.orEmpty()
         }

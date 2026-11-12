@@ -8,6 +8,7 @@ import com.cutedino.xiangsuplayer.core.model.Song
 import com.cutedino.xiangsuplayer.core.source.ISoundSourceAdapter
 import com.cutedino.xiangsuplayer.core.source.SoundSourceRepository
 import com.cutedino.xiangsuplayer.core.source.SourceEnablement
+import com.cutedino.xiangsuplayer.core.source.SourceHttpException
 import com.cutedino.xiangsuplayer.core.source.SourceNetwork
 import com.cutedino.xiangsuplayer.data.session.SessionManager
 import com.cutedino.xiangsuplayer.core.source.StreamResult
@@ -15,9 +16,10 @@ import com.cutedino.xiangsuplayer.core.source.builtin.BuiltInSourceSearchApi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import net.moriafly.ncm.readResponse
+import net.moriafly.ncm.readBounded
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 import okhttp3.Call
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
@@ -120,26 +122,53 @@ object SourceMarketRepository {
     }
 
     private fun sourceFiles(dir: File): Map<String, File> {
-        val index = AtomicFile(File(dir, "installed.json"))
-        if (!index.baseFile.exists() && !File(dir, "installed.json.bak").exists()) {
+        val primary = AtomicFile(File(dir, "installed.json"))
+        val fallback = AtomicFile(File(dir, "installed.last-good.json"))
+        fun exists(file: AtomicFile) = file.baseFile.exists() || File(file.baseFile.path + ".bak").exists()
+        if (!exists(primary) && !exists(fallback)) {
             return dir.listFiles { file -> file.isFile && file.name.endsWith(".js", true) }
                 .orEmpty().associateBy { it.name }
         }
-        val data = JSONObject(index.readFully().toString(Charsets.UTF_8))
-        return data.keys().asSequence().associateWith { name ->
-            val path = data.getString(name)
-            require(path.matches(Regex("(?:payloads/[a-f0-9-]+|[^/\\\\]+\\.js)", RegexOption.IGNORE_CASE)))
-            File(dir, path)
+        return readIndex(dir, primary) ?: readIndex(dir, fallback).orEmpty()
+    }
+
+    private fun readIndex(dir: File, index: AtomicFile): Map<String, File>? = try {
+        val json = index.openRead().use { JSONObject(it.readBounded(1024 * 1024).toString(Charsets.UTF_8)) }
+        json.keys().asSequence().associateWith { name ->
+            scriptName(name)
+            val path = json.getString(name)
+            require(path.matches(Regex("""(?:payloads/[a-f0-9-]+|[^/\\]+\.js)""", RegexOption.IGNORE_CASE)))
+            File(dir, path).also { require(it.isFile) }
         }
+    } catch (_: java.io.FileNotFoundException) {
+        null
+    } catch (failure: Exception) {
+        android.util.Log.w("SourceMarket", "Invalid installed source index: ${index.baseFile.name}", failure)
+        null
     }
 
     private fun writeIndex(dir: File, sources: Map<String, File>) {
         val data = JSONObject()
         sources.forEach { (name, file) -> data.put(name, file.relativeTo(dir).invariantSeparatorsPath) }
-        val index = AtomicFile(File(dir, "installed.json"))
+        val bytes = data.toString().toByteArray(Charsets.UTF_8)
+        require(bytes.size <= 1024 * 1024) { "音源索引超过大小上限" }
+        writeAtomically(AtomicFile(File(dir, "installed.json")), bytes)
+        try {
+            writeAtomically(AtomicFile(File(dir, "installed.last-good.json")), bytes)
+            val retained = sources.values.toSet()
+            File(dir, "payloads").listFiles()?.forEach {
+                if (it !in retained && it.isFile && it.name.matches(Regex("[a-f0-9-]+"))) it.delete()
+            }
+        } catch (failure: Exception) {
+            // Keep the previous payloads while an older recovery index may still refer to them.
+            android.util.Log.w("SourceMarket", "Could not update the recovery index", failure)
+        }
+    }
+
+    private fun writeAtomically(index: AtomicFile, bytes: ByteArray) {
         val out = index.startWrite()
         try {
-            out.write(data.toString().toByteArray(Charsets.UTF_8))
+            out.write(bytes)
             index.finishWrite(out)
         } catch (failure: Exception) {
             index.failWrite(out)
@@ -169,7 +198,6 @@ object SourceMarketRepository {
             staged.values.forEach { it.delete() }
             throw failure
         }
-        scripts.keys.forEach { previous[it]?.delete() }
         reloadInstalledSources()
         return installedSources.filter { it.fileName in scripts }
     }
@@ -185,7 +213,8 @@ object SourceMarketRepository {
                 .build()
             val body = client.newCall(req).readResponse { resp ->
                 check(resp.isSuccessful) { "音源市场请求失败（HTTP ${resp.code}）" }
-                checkNotNull(resp.body?.string()) { "音源市场返回了空响应" }
+                checkNotNull(resp.body) { "音源市场返回了空响应" }
+                    .readBounded(2 * 1024 * 1024).toString(Charsets.UTF_8)
             }
 
             val releases = run {
@@ -323,7 +352,6 @@ object SourceMarketRepository {
         val target = installedSources.firstOrNull { it.id == sourceId } ?: return
         val files = sourceFiles(dir)
         writeIndex(dir, files - target.fileName)
-        files[target.fileName]?.delete()
         reloadInstalledSources()
     }
 
@@ -395,12 +423,12 @@ class LxScriptSourceAdapter(
                 }
                 val endpoint = base.newBuilder()
                     .addPathSegment("url").addPathSegment(song.key.sourceId)
-                    .addPathSegment(song.songmid.ifBlank { song.id }).addPathSegment(qualityName)
+                    .addPathSegment(song.stableProviderId).addPathSegment(qualityName)
                     .build()
                 val request = Request.Builder().url(endpoint).build()
                 val body = client.newCall(request).readResponse { response ->
-                    check(response.isSuccessful) { "音源 HTTP ${response.code}" }
-                    response.body?.string().orEmpty()
+                    if (!response.isSuccessful) throw SourceHttpException(response.code)
+                    response.body?.readBounded(256 * 1024)?.toString(Charsets.UTF_8).orEmpty()
                 }
                 val json = JSONObject(body)
                 val url = json.optString("url").ifBlank { json.optJSONObject("data")?.optString("url").orEmpty() }

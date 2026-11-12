@@ -19,6 +19,7 @@ import com.cutedino.xiangsuplayer.core.source.StreamResult
 import com.cutedino.xiangsuplayer.core.source.ResolvedStream
 import com.cutedino.xiangsuplayer.core.source.SourceNetwork
 import com.cutedino.xiangsuplayer.data.auth.MultiPlatformAccountManager
+import com.cutedino.xiangsuplayer.data.auth.FavoriteSyncWorker
 import com.cutedino.xiangsuplayer.data.db.AppDatabase
 import com.cutedino.xiangsuplayer.data.db.toFavoriteEntity
 import com.cutedino.xiangsuplayer.data.db.toHistoryEntity
@@ -72,13 +73,25 @@ internal class PlaybackEngine(
     private var snapshotJob: Job? = null
     private var historyJob: Job? = null
     private val favoritesLock = Mutex()
+    private val favoriteSync = AppDatabase.getInstanceOrNull()?.songDao()?.let { FavoriteSyncWorker(it, scope) }
     private var resumePosition: Long? = null
     private var resumeOnReady: Long? = null
     private var fmJob: Job? = null
+    private var recommendationJob: Job? = null
+    private var restoreJob: Job? = null
+    private var enterKaraokeJob: Job? = null
     private var requestedQueueRevision = 0L
     private var waitingForFm = false
     private var karaoke = false
-    private var ordinaryQueue: PlaybackSnapshot? = null
+    private var ordinaryQueue: OrdinaryQueue? = null
+    private var nextEntryId: String? = null
+
+    private data class OrdinaryQueue(
+        val playback: PlaybackSnapshot,
+        val originalOrder: List<PlaybackQueueEntry>,
+        val nextEntryId: String?,
+        val isPersonalFm: Boolean
+    )
 
 
     private val _currentSong = state.currentSong
@@ -123,8 +136,13 @@ internal class PlaybackEngine(
     private var coverJob: Job? = null
     private var songRevision = 0L
     private var streamRevision = 0L
+    private var historyRevision = -1L
+    private var pendingManualResolution: Long? = null
     private var shouldPlay = false
     private var activeResolution: ResolvedStream? = null
+    private var resolutionReady = false
+    private var rejectedMiguUrl: String? = null
+    private val sourceAttempts = PlaybackSourceAttempts()
     private var previousStream: PreviousStream? = null
 
     private data class PreviousStream(
@@ -144,7 +162,14 @@ internal class PlaybackEngine(
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 _isPlaying.value = isPlaying
                 publish()
-                if (isPlaying) startProgressTracker() else stopProgressTracker()
+                if (isPlaying) {
+                    val song = _currentSong.value
+                    if (song != null && historyRevision != songRevision) {
+                        historyRevision = songRevision
+                        recordHistory(song)
+                    }
+                    startProgressTracker()
+                } else stopProgressTracker()
             }
 
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
@@ -157,6 +182,7 @@ internal class PlaybackEngine(
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) {
                     previousStream = null
+                    resolutionReady = true
                     _quality.value?.let { SessionManager.saveAudioQuality(appContext, it) }
                     _currentPosition.value = exoPlayer.currentPosition
                     updateActiveLyric(exoPlayer.currentPosition)
@@ -175,28 +201,33 @@ internal class PlaybackEngine(
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                val previous = previousStream
-                previousStream = null
-                resumeOnReady?.let { resumePosition = it }
-                resumeOnReady = null
-                _playbackError.value = if (previous == null) "播放失败，请重试" else "切换失败，已恢复原音源"
-                if (previous != null) {
-                    _quality.value = previous.quality
-                    activeResolution = previous.resolution
-                    _activeStreamResult.value = previous.resolution?.result
-                    prepareMedia(previous.item, previous.position, previous.resolution)
-                    exoPlayer.playWhenReady = shouldPlay
-                    exoPlayer.prepare()
-                }
-                publish()
+                if (pendingManualResolution == null) recoverPlaybackError()
             }
         })
 
         loadPersistedRoomData()
-        scope.launch {
+        restoreJob = scope.launch {
             val saved = withContext(Dispatchers.IO) { snapshots.read() }
             if (saved != null && songRevision == 0L) restore(saved)
         }
+    }
+
+    private fun recoverPlaybackError() {
+        val refreshMigu = invalidateMiguUrl()
+        val previous = previousStream
+        previousStream = null
+        resumeOnReady?.let { resumePosition = it }
+        resumeOnReady = null
+        _playbackError.value = if (previous == null) "播放失败，请重试" else "切换失败，已恢复原音源"
+        if (previous != null) {
+            _quality.value = previous.quality
+            activeResolution = previous.resolution
+            _activeStreamResult.value = previous.resolution?.result
+            prepareMedia(previous.item, previous.position, previous.resolution)
+            exoPlayer.playWhenReady = shouldPlay
+            exoPlayer.prepare()
+        } else if (retryAfterPlaybackError(refreshMigu)) return
+        publish()
     }
 
     private fun publish() {
@@ -248,8 +279,9 @@ internal class PlaybackEngine(
     }
 
     fun playSong(song: Song, list: List<Song> = emptyList(), isFm: Boolean = false) {
-        if (karaoke) endKaraoke()
-        requestedQueueRevision++
+        endKaraoke()
+        cancelRecommendation()
+        nextEntryId = null
         fmJob?.cancel()
         waitingForFm = false
         _isPersonalFmMode.value = isFm
@@ -278,8 +310,9 @@ internal class PlaybackEngine(
 
     fun playSongAtIndex(index: Int) {
         val entry = playlist.getOrNull(index) ?: return
+        cancelRecommendation()
+        if (playlist.getOrNull(currentIndex)?.id != entry.id) nextEntryId = null
         currentIndex = index
-        recordHistory(entry.song)
         activateSong(entry.song)
         publishQueue()
         saveSnapshot()
@@ -294,6 +327,7 @@ internal class PlaybackEngine(
         val entry = playlist.removeAt(index)
         if (index < currentIndex) currentIndex--
         playlist.add((currentIndex + 1).coerceIn(0, playlist.size), entry)
+        rememberNext(entry)
         publishQueue()
         saveSnapshot()
     }
@@ -301,6 +335,7 @@ internal class PlaybackEngine(
     private fun activateSong(song: Song) {
         val revision = ++songRevision
         previousStream = null
+        pendingManualResolution = null
         resumePosition = null
         resumeOnReady = null
         exoPlayer.stop()
@@ -310,6 +345,9 @@ internal class PlaybackEngine(
         _currentPosition.value = 0L
         _duration.value = 0L
         activeResolution = null
+        resolutionReady = false
+        sourceAttempts.reset()
+        rejectedMiguUrl = null
         _activeStreamResult.value = null
         _lyrics.value = emptyList()
         _activeLyricIndex.value = -1
@@ -343,11 +381,20 @@ internal class PlaybackEngine(
     /**
      * 启动私人 FM 漫游模式
      */
+    private fun cancelRecommendation() {
+        requestedQueueRevision++
+        recommendationJob?.cancel()
+        recommendationJob = null
+    }
+
     fun startPersonalFm(onLoaded: ((Boolean) -> Unit)? = null) {
-        val revision = ++requestedQueueRevision
-        scope.launch {
+        cancelRecommendation()
+        val revision = requestedQueueRevision
+        recommendationJob = scope.launch {
             val res = MultiPlatformAccountManager.fetchPersonalFmSongs()
+            ensureActive()
             if (revision != requestedQueueRevision) return@launch
+            recommendationJob = null
             val fmSongs = res.getOrDefault(emptyList())
             if (fmSongs.isNotEmpty()) {
                 playSong(fmSongs.first(), fmSongs, isFm = true)
@@ -360,11 +407,10 @@ internal class PlaybackEngine(
 
     private fun appendMorePersonalFm() {
         if (fmJob?.isActive == true) return
-        val revision = requestedQueueRevision
         fmJob = scope.launch {
             val more = MultiPlatformAccountManager.fetchPersonalFmSongs().getOrDefault(emptyList())
             ensureActive()
-            if (revision != requestedQueueRevision || !_isPersonalFmMode.value) return@launch
+            if (!_isPersonalFmMode.value) return@launch
             val known = playlist.mapTo(mutableSetOf()) { it.song.key }
             val filtered = more.filter { known.add(it.key) }.map { PlaybackQueueEntry(it) }
             playlist.addAll(filtered)
@@ -385,14 +431,17 @@ internal class PlaybackEngine(
      * 启动心动智能推荐模式 (Heart Mode)
      */
     fun startHeartMode(onLoaded: ((Boolean) -> Unit)? = null) {
-        val revision = ++requestedQueueRevision
-        scope.launch {
+        cancelRecommendation()
+        val revision = requestedQueueRevision
+        recommendationJob = scope.launch {
             val seedId = _currentSong.value?.takeIf { it.key.sourceId == "wy" }?.id
                 ?: _favoriteSongs.value.firstOrNull { it.key.sourceId == "wy" }?.id
                 ?: historyList.firstOrNull { it.key.sourceId == "wy" }?.id
                 ?: "1901371647"
             val heartSongs = MultiPlatformAccountManager.fetchHeartModeSongs(seedId).getOrDefault(emptyList())
+            ensureActive()
             if (revision != requestedQueueRevision) return@launch
+            recommendationJob = null
             if (heartSongs.isNotEmpty()) {
                 _playMode.value = PlayMode.HEART_MODE
                 playSong(heartSongs.first(), heartSongs, isFm = false)
@@ -408,12 +457,13 @@ internal class PlaybackEngine(
      */
     fun toggleFavorite(song: Song? = _currentSong.value) {
         val target = song ?: return
+        val accountId = NcmApi.currentAccount()?.userId
         scope.launch {
             favoritesLock.withLock {
                 val dao = AppDatabase.getInstanceOrNull()?.songDao() ?: return@withLock
                 try {
-                    val isFavorite = dao.toggleFavorite(target.toFavoriteEntity())
-                    MultiPlatformAccountManager.syncNeteaseLike(target.key, isFavorite)
+                    dao.toggleFavorite(target.toFavoriteEntity(), accountId)
+                    favoriteSync?.notifyChanged()
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (failure: Exception) {
@@ -470,9 +520,17 @@ internal class PlaybackEngine(
         }
         val entry = PlaybackQueueEntry(song)
         playlist.add((currentIndex + 1).coerceIn(0, playlist.size), entry)
-        originalPlaylist.add(entry)
+        rememberNext(entry)
         publishQueue()
         saveSnapshot()
+    }
+
+    private fun rememberNext(entry: PlaybackQueueEntry) {
+        val current = playlist.getOrNull(currentIndex)
+        originalPlaylist.remove(entry)
+        val anchor = originalPlaylist.indexOfFirst { it.id == current?.id }
+        originalPlaylist.add(anchor + 1, entry)
+        nextEntryId = entry.id
     }
 
     private fun resolveStream(
@@ -480,27 +538,38 @@ internal class PlaybackEngine(
         quality: AudioQuality = _quality.value ?: AudioQuality.LOSSLESS,
         sourceId: String? = null,
         preservePosition: Boolean = false,
-        preferredSourceId: String? = null
+        preferredSourceId: String? = null,
+        continueAttempt: Boolean = false
     ) {
+        if (!continueAttempt) sourceAttempts.startBudget()
         val revision = ++streamRevision
         resolveJob?.cancel()
+        pendingManualResolution = revision.takeIf { preservePosition }
         _playbackError.value = null
         resolveJob = scope.launch {
             val result = try {
                 when {
                     FolderLibrary.isFolderSong(song) ->
                         Result.success(FolderLibrary.resolve(appContext, song, quality))
-                    sourceId == null -> SoundSourceRepository.getStreamUrl(song, quality, preferredSourceId)
-                    else -> SoundSourceRepository.getStreamUrlFromSource(sourceId, song, quality)
+                    sourceId == null -> SoundSourceRepository.getStreamUrl(
+                        song, quality, preferredSourceId, sourceAttempts.exclusions(quality), sourceAttempts.remaining(), rejectedMiguUrl
+                    )
+                    else -> SoundSourceRepository.getStreamUrlFromSource(sourceId, song, quality, rejectedMiguUrl)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
                 Result.failure(failure)
             }
+            ensureActive()
             if (revision != streamRevision) return@launch
+            pendingManualResolution = null
             val stream = result.getOrNull()?.takeIf { it.streamUrl.isNotBlank() }
             if (stream == null) {
+                if (preservePosition && exoPlayer.playerError != null) {
+                    recoverPlaybackError()
+                    return@launch
+                }
                 _playbackError.value = when {
                     preservePosition -> "切换失败，请重试"
                     FolderLibrary.isFolderSong(song) -> "目录曲目不可访问，请检查授权、U 盘或网络"
@@ -514,7 +583,7 @@ internal class PlaybackEngine(
             resumePosition = null
             val position = if (preservePosition && resumeOnReady == null) exoPlayer.currentPosition else 0L
             previousStream = if (preservePosition) {
-                previousStream ?: exoPlayer.currentMediaItem?.let {
+                previousStream ?: exoPlayer.currentMediaItem?.takeIf { exoPlayer.playerError == null }?.let {
                     PreviousStream(it, position, _quality.value ?: AudioQuality.LOSSLESS, activeResolution)
                 }
             } else null
@@ -531,6 +600,7 @@ internal class PlaybackEngine(
                 )
                 .build()
             activeResolution = stream
+            resolutionReady = false
             _activeStreamResult.value = stream.result
             _quality.value = quality
             prepareMedia(mediaItem, position, stream)
@@ -539,10 +609,33 @@ internal class PlaybackEngine(
         }
     }
 
+    private fun invalidateMiguUrl(): Boolean {
+        val stream = activeResolution ?: return false
+        if (_currentSong.value?.key?.sourceId != "mg" || rejectedMiguUrl != null ||
+            stream.sourceId != SoundSourceRepository.crossPlatformAdapter.sourceId) return false
+        rejectedMiguUrl = stream.streamUrl
+        return true
+    }
+
+    private fun retryAfterPlaybackError(refreshMigu: Boolean): Boolean {
+        val song = _currentSong.value ?: return false
+        val failed = activeResolution ?: return false
+        if (FolderLibrary.isFolderSong(song)) return false
+        val quality = failed.requestedQuality
+        if (!refreshMigu) sourceAttempts.reject(quality, failed.sourceId)
+        sourceAttempts.onMediaFailure(wasReady = resolutionReady)
+        activeResolution = null
+        resolutionReady = false
+        if (!shouldPlay || sourceAttempts.remaining() <= 0L) return false
+        if (!SoundSourceRepository.hasUntriedSource(song, sourceAttempts.exclusions(quality))) return false
+        resumePosition = resumePosition ?: exoPlayer.currentPosition.takeIf { it > 0L }
+        resolveStream(song, quality, continueAttempt = true)
+        return true
+    }
+
     private fun prepareMedia(item: MediaItem, position: Long, resolution: ResolvedStream?) {
         if (resolution?.sourceId?.startsWith("webdav:") == true) {
-            val factory = OkHttpDataSource.Factory(WebDavClient.playbackClient(resolution.seekable))
-                .setDefaultRequestProperties(resolution.requestHeaders)
+            val factory = OkHttpDataSource.Factory(WebDavClient.playbackClient(resolution.seekable)).setDefaultRequestProperties(resolution.requestHeaders)
             val source = ProgressiveMediaSource.Factory(factory).createMediaSource(item)
             exoPlayer.setMediaSource(source, if (resolution.seekable == false) 0L else position)
         } else if (item.localConfiguration?.uri?.scheme == "http") {
@@ -567,11 +660,34 @@ internal class PlaybackEngine(
         val song = _currentSong.value ?: return
         shouldPlay = true
         if (exoPlayer.currentMediaItem == null || shouldRetryPlayback()) {
-            if (resolveJob?.isActive != true) resolveStream(song, preservePosition = exoPlayer.currentMediaItem != null)
-        } else exoPlayer.play()
+            if (resolveJob?.isActive != true) {
+                val quality = _quality.value ?: AudioQuality.LOSSLESS
+                if (!SoundSourceRepository.hasUntriedSource(song, sourceAttempts.exclusions(quality))) sourceAttempts.clear(quality)
+                val failed = exoPlayer.playerError != null
+                if (failed) resumePosition = resumePosition ?: exoPlayer.currentPosition.takeIf { it > 0L }
+                resolveStream(song, quality, preservePosition = !failed && exoPlayer.currentMediaItem != null)
+            }
+        } else {
+            if (exoPlayer.playbackState == Player.STATE_IDLE) exoPlayer.prepare()
+            exoPlayer.play()
+        }
+    }
+
+    fun stop() {
+        cancelRecommendation()
+        shouldPlay = false
+        waitingForFm = false
+        streamRevision++
+        resolveJob?.cancel()
+        pendingManualResolution = null
+        previousStream = null
+        exoPlayer.pause()
+        exoPlayer.stop()
+        saveSnapshot()
     }
 
     fun pause() {
+        cancelRecommendation()
         shouldPlay = false
         waitingForFm = false
         exoPlayer.pause()
@@ -587,6 +703,7 @@ internal class PlaybackEngine(
 
     fun playNext() {
         if (playlist.isEmpty()) return
+        cancelRecommendation()
         if (karaoke) {
             removeFromPlaylistAt(currentIndex)
             return
@@ -604,6 +721,7 @@ internal class PlaybackEngine(
 
     fun playPrevious() {
         if (playlist.isEmpty()) return
+        cancelRecommendation()
         if (karaoke) {
             seekTo(0L)
             return
@@ -630,6 +748,7 @@ internal class PlaybackEngine(
 
     fun togglePlayMode() {
         if (karaoke) return
+        cancelRecommendation()
         val next = (_playMode.value ?: PlayMode.SEQUENCE).next()
         _playMode.value = next
         if (next == PlayMode.HEART_MODE) {
@@ -645,6 +764,11 @@ internal class PlaybackEngine(
         } else if (originalPlaylist.isNotEmpty()) {
             playlist.clear()
             playlist.addAll(originalPlaylist)
+        }
+        val queuedNext = playlist.firstOrNull { it.id == nextEntryId }
+        if (current != null && queuedNext != null) {
+            playlist.remove(queuedNext)
+            playlist.add(playlist.indexOf(current) + 1, queuedNext)
         }
         currentIndex = playlist.indexOfFirst { it.id == current?.id }
         publishQueue()
@@ -678,6 +802,7 @@ internal class PlaybackEngine(
     fun removeFromPlaylistAt(removeIndex: Int) {
         if (removeIndex in playlist.indices) {
             val removed = playlist.removeAt(removeIndex)
+            if (nextEntryId == removed.id) nextEntryId = null
             val originalIndex = originalPlaylist.indexOfFirst { it.id == removed.id }
             if (originalIndex >= 0) originalPlaylist.removeAt(originalIndex)
             if (removeIndex < currentIndex) {
@@ -695,6 +820,10 @@ internal class PlaybackEngine(
     }
 
     private fun clearCurrentSong() {
+        cancelRecommendation()
+        fmJob?.cancel()
+        nextEntryId = null
+        pendingManualResolution = null
         currentIndex = -1
         songRevision++
         streamRevision++
@@ -704,7 +833,9 @@ internal class PlaybackEngine(
         previousStream = null
         resumePosition = null
         resumeOnReady = null
-        pause()
+        shouldPlay = false
+        waitingForFm = false
+        exoPlayer.pause()
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
         _currentSong.value = null
@@ -757,20 +888,19 @@ internal class PlaybackEngine(
             }
         }
         if (active != _activeLyricIndex.value) {
-            _activeLyricIndex.postValue(active)
+            _activeLyricIndex.value = active
         }
     }
 
     private fun snapshot(): PlaybackSnapshot? {
         val current = playlist.getOrNull(currentIndex) ?: return null
-        val start = (currentIndex - 250).coerceAtLeast(0)
         val position = resumePosition ?: resumeOnReady ?:
             if (exoPlayer.currentMediaItem == null) _currentPosition.value else exoPlayer.currentPosition
-        return PlaybackSnapshot(playlist.drop(start).take(500), current.id, position, _playMode.value ?: PlayMode.SEQUENCE)
+        return PlaybackSnapshot(playlist.toList(), current.id, position, _playMode.value ?: PlayMode.SEQUENCE)
     }
 
     private fun saveSnapshot() {
-        if (karaoke) return
+        if (karaoke || (restoreJob?.isActive == true && songRevision == 0L)) return
         val value = snapshot()
         val previous = snapshotJob
         snapshotJob = scope.launch {
@@ -782,6 +912,8 @@ internal class PlaybackEngine(
     private fun restore(value: PlaybackSnapshot) {
         val restoredIndex = value.queue.indexOfFirst { it.id == value.currentId }
         if (restoredIndex < 0) return
+        sourceAttempts.reset()
+        rejectedMiguUrl = null
         playlist.clear()
         originalPlaylist.clear()
         playlist.addAll(value.queue)
@@ -799,12 +931,19 @@ internal class PlaybackEngine(
     }
 
     fun beginKaraoke() {
-        if (karaoke) return
-        ordinaryQueue = snapshot()
+        if (karaoke || enterKaraokeJob?.isActive == true) return
+        enterKaraokeJob = scope.launch {
+            restoreJob?.join()
+            enterKaraoke()
+        }
+    }
+
+    private fun enterKaraoke() {
+        ordinaryQueue = snapshot()?.let {
+            OrdinaryQueue(it, originalPlaylist.toList(), nextEntryId, _isPersonalFmMode.value)
+        }
         saveSnapshot()
         karaoke = true
-        requestedQueueRevision++
-        fmJob?.cancel()
         playlist.clear()
         originalPlaylist.clear()
         clearCurrentSong()
@@ -822,12 +961,20 @@ internal class PlaybackEngine(
     }
 
     fun endKaraoke() {
+        enterKaraokeJob?.cancel()
+        enterKaraokeJob = null
         if (!karaoke) return
         playlist.clear()
         originalPlaylist.clear()
         clearCurrentSong()
         karaoke = false
-        ordinaryQueue?.let(::restore)
+        ordinaryQueue?.let {
+            restore(it.playback)
+            originalPlaylist.clear()
+            originalPlaylist.addAll(it.originalOrder)
+            nextEntryId = it.nextEntryId
+            _isPersonalFmMode.value = it.isPersonalFm
+        }
         ordinaryQueue = null
         publishQueue()
     }
